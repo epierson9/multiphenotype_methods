@@ -1,6 +1,6 @@
 import numpy as np
 import scipy.linalg as slin
-from df_utils import get_continuous_features_as_matrix, assert_zero_mean, add_id, remove_id_and_get_mat, make_age_bins, compute_column_means_with_incomplete_data, get_matrix_for_age_prediction, compute_correlation_matrix_with_incomplete_data, partition_dataframe_into_binary_and_continuous, create_train_and_validation_batches
+from multiphenotype_utils import cluster_and_plot_correlation_matrix, get_continuous_features_as_matrix, assert_zero_mean, add_id, remove_id_and_get_mat, make_age_bins, compute_column_means_with_incomplete_data, compute_correlation_matrix_with_incomplete_data, partition_dataframe_into_binary_and_continuous, divide_idxs_into_batches
 from IPython import embed
 from sklearn.linear_model import LinearRegression, LogisticRegression
 import sklearn.decomposition as decomp
@@ -9,10 +9,8 @@ from sklearn.covariance import EmpiricalCovariance
 from collections import Counter
 import matplotlib.pyplot as plt
 import seaborn as sns
-from analysis import cluster_and_plot_correlation_matrix
 import tensorflow as tf
 import time, random, os
-
 
 """
 This file contains classes to compute multi-phenotypes. 
@@ -267,6 +265,7 @@ class LinearAgePredictor(LinearDimReducer):
         self.need_ages = True
         
     def data_preprocessing_function(self, df):
+        # TODO: get_matrix_for_age_prediction needs to be implemented. 
         X, self.feature_names = get_matrix_for_age_prediction(df, return_cols = True)
         return X
 
@@ -354,34 +353,46 @@ class MahalanobisDistance(DimReducer):
         return md
 
 class Autoencoder(DimReducer):
-    def __init__(self, k, max_epochs = 300, variational = False):
+    def glorot_init(self, shape):
+        return tf.random_normal(shape=shape, stddev=1. / tf.sqrt(shape[0] / 2.))
+    
+    def __init__(self, k, max_epochs=300, variational=False):
         self.need_ages = False
-        self.encoder_layer_sizes = [50, 20, 20] # encoder layers prior to innermost hidden state
+        
         self.k = k # innermost hidden state
-        self.decoder_layer_sizes = [20, 20, 50] # decoder layers after innermost hidden state
         self.max_epochs = max_epochs
-        self.batch_size = 100
+        
         self.validation_frac = .2
         if not variational:
+            self.batch_size = 100
             self.learning_rate = .005
+            self.optimization_method = tf.train.AdamOptimizer
+            self.initialization_function = tf.random_normal
+            self.max_epochs_without_improving = 20
+            self.encoder_layer_sizes = [50, 20, 20] # encoder layers prior to innermost hidden state
+            self.decoder_layer_sizes = [20, 20, 50] # decoder layers after innermost hidden state
         else:
             self.learning_rate = .001
-        self.max_epochs_without_improving = 10
+            self.batch_size = 100
+            self.optimization_method = tf.train.RMSPropOptimizer
+            self.initialization_function = self.glorot_init
+            self.max_epochs_without_improving = 50
+            self.encoder_layer_sizes = [50, 20, 20] # encoder layers prior to innermost hidden state
+            self.decoder_layer_sizes = [] # decoder layers after innermost hidden state
+            self.kl_weighting = 0
+            
         self.variational = variational
         print("Creating autoencoder. Variational: %s" % variational)
         
-    
     def data_preprocessing_function(self, df):
         X, self.binary_feature_idxs, self.continuous_feature_idxs, self.feature_names = partition_dataframe_into_binary_and_continuous(df)
         print("Number of continuous features: %i; binary features %i" % (len(self.continuous_feature_idxs), len(self.binary_feature_idxs)))
         return X
     
-    def encode(self, X, use_sigma_encoder):  
+    def encode(self, X):  
+        foward_prop = X
         for idx in range(len(self.encoder_layer_sizes)):
-            if idx == 0:
-                forward_prop = tf.nn.sigmoid(tf.matmul(X, self.weights['encoder_h0']) + self.biases['encoder_b0'])
-            else:
-                forward_prop = tf.nn.sigmoid(tf.matmul(forward_prop, self.weights['encoder_h%i' % (idx)]) + self.biases['encoder_b%i' % (idx)])
+            forward_prop = tf.nn.sigmoid(tf.matmul(forward_prop, self.weights['encoder_h%i' % (idx)]) + self.biases['encoder_b%i' % (idx)])
         Z = tf.nn.sigmoid(tf.matmul(forward_prop, self.weights['encoder_to_hidden_state']) + self.biases['hidden_state'])
         return Z
 
@@ -396,21 +407,16 @@ class Autoencoder(DimReducer):
             layer_suffix = '_sigma'
         else:
             layer_suffix = ''
+        forward_prop = X
         for idx in range(len(self.encoder_layer_sizes)):
-            if idx == 0:
-                forward_prop = tf.nn.sigmoid(tf.matmul(X, self.weights['encoder_h0%s' % layer_suffix]) + self.biases['encoder_b0%s' % layer_suffix])
-            else:
-                forward_prop = tf.nn.sigmoid(tf.matmul(forward_prop, self.weights['encoder_h%i%s' % (idx, layer_suffix)]) + self.biases['encoder_b%i%s' % (idx, layer_suffix)])
+            forward_prop = tf.nn.sigmoid(tf.matmul(forward_prop, self.weights['encoder_h%i%s' % (idx, layer_suffix)]) + self.biases['encoder_b%i%s' % (idx, layer_suffix)])
         gaussian_params = tf.matmul(forward_prop, self.weights['encoder_to_hidden_state%s' % layer_suffix]) + self.biases['hidden_state%s' % layer_suffix]
         return gaussian_params
         
     def decode(self, Z):
+        forward_prop = Z
         for idx in range(len(self.decoder_layer_sizes)):
-            if idx == 0:
-                forward_prop = tf.nn.sigmoid(tf.matmul(Z, self.weights['decoder_h0']) + self.biases['decoder_b0'])
-            else:
-                forward_prop = tf.nn.sigmoid(tf.matmul(forward_prop, self.weights['decoder_h%i' % idx]) + self.biases['decoder_b%i' % idx])
-        
+            forward_prop = tf.nn.sigmoid(tf.matmul(forward_prop, self.weights['decoder_h%i' % idx]) + self.biases['decoder_b%i' % idx])
         # no sigmoid on the final layer because it doesn't have to be positive. 
         continuous_X = tf.matmul(forward_prop, self.weights['continuous_output_h']) + self.biases['continuous_output_b']
         logit_X = tf.matmul(forward_prop, self.weights['logit_output_h']) + self.biases['logit_output_b']
@@ -420,6 +426,15 @@ class Autoencoder(DimReducer):
         n_examples = len(X)
         continuous_X = X[:, self.continuous_feature_idxs]
         binary_X = X[:, self.binary_feature_idxs]
+        
+        # set up train and validation set. 
+        shuffled_idxs = list(range(n_examples))
+        random.shuffle(shuffled_idxs)
+        train_cutoff = int(n_examples * (1 - self.validation_frac))
+        self.train_idxs = shuffled_idxs[:train_cutoff]
+        self.validation_idxs = shuffled_idxs[train_cutoff:]
+        print("Total dataset size %i; train size %i; validation size %i" % (n_examples, len(self.train_idxs), len(self.validation_idxs)))
+        
         
         # Set up tensorflow graph
         # placeholders 
@@ -439,18 +454,19 @@ class Autoencoder(DimReducer):
                 input_dim = self.encoder_layer_sizes[encoder_layer_idx - 1]
             output_dim = self.encoder_layer_sizes[encoder_layer_idx]
             print("Added encoder layer with input dimension %i and output dimension %i" % (input_dim, output_dim))
-            self.weights['encoder_h%i' % encoder_layer_idx] = tf.Variable(tf.random_normal([input_dim, output_dim]))
-            self.biases['encoder_b%i' % encoder_layer_idx] = tf.Variable(tf.random_normal([output_dim]))
-            print("Added encoder-to-hidden state layer with input dimension %i and output dimension %i" % (self.encoder_layer_sizes[-1], self.k))
+            self.weights['encoder_h%i' % encoder_layer_idx] = tf.Variable(self.initialization_function([input_dim, output_dim]))
+            self.biases['encoder_b%i' % encoder_layer_idx] = tf.Variable(self.initialization_function([output_dim]))
             if self.variational: # then we also need a sigma layer. 
-                self.weights['encoder_h%i_sigma' % encoder_layer_idx] = tf.Variable(tf.random_normal([input_dim, output_dim]))
-                self.biases['encoder_b%i_sigma' % encoder_layer_idx] = tf.Variable(tf.random_normal([output_dim]))
+                print("Adding sigma layer of same size")
+                self.weights['encoder_h%i_sigma' % encoder_layer_idx] = tf.Variable(self.initialization_function([input_dim, output_dim]))
+                self.biases['encoder_b%i_sigma' % encoder_layer_idx] = tf.Variable(self.initialization_function([output_dim]))
                 
-        self.weights['encoder_to_hidden_state'] =  tf.Variable(tf.random_normal([self.encoder_layer_sizes[-1], self.k]))
-        self.biases['hidden_state'] =  tf.Variable(tf.random_normal([self.k]))
+        self.weights['encoder_to_hidden_state'] =  tf.Variable(self.initialization_function([self.encoder_layer_sizes[-1], self.k]))
+        self.biases['hidden_state'] =  tf.Variable(self.initialization_function([self.k]))
+        print("Added encoder-to-hidden state layer with input dimension %i and output dimension %i" % (self.encoder_layer_sizes[-1], self.k))
         if self.variational:
-            self.weights['encoder_to_hidden_state_sigma'] =  tf.Variable(tf.random_normal([self.encoder_layer_sizes[-1], self.k]))
-            self.biases['hidden_state_sigma'] =  tf.Variable(tf.random_normal([self.k]))
+            self.weights['encoder_to_hidden_state_sigma'] =  tf.Variable(self.initialization_function([self.encoder_layer_sizes[-1], self.k]))
+            self.biases['hidden_state_sigma'] =  tf.Variable(self.initialization_function([self.k]))
         
         
         # decoder layers. 
@@ -461,14 +477,20 @@ class Autoencoder(DimReducer):
                 input_dim = self.decoder_layer_sizes[decoder_layer_idx - 1]
             output_dim = self.decoder_layer_sizes[decoder_layer_idx]
             print("Added decoder layer with input dimension %i and output dimension %i" % (input_dim, output_dim))
-            self.weights['decoder_h%i' % decoder_layer_idx] = tf.Variable(tf.random_normal([input_dim, output_dim]))
-            self.biases['decoder_b%i' % decoder_layer_idx] = tf.Variable(tf.random_normal([output_dim]))
-            
-        self.weights['continuous_output_h'] =  tf.Variable(tf.random_normal([self.decoder_layer_sizes[-1], len(self.continuous_feature_idxs)]))
-        self.biases['continuous_output_b'] =  tf.Variable(tf.random_normal([len(self.continuous_feature_idxs)]))
+            self.weights['decoder_h%i' % decoder_layer_idx] = tf.Variable(self.initialization_function([input_dim, output_dim]))
+            self.biases['decoder_b%i' % decoder_layer_idx] = tf.Variable(self.initialization_function([output_dim]))
         
-        self.weights['logit_output_h'] =  tf.Variable(tf.random_normal([self.decoder_layer_sizes[-1],len(self.binary_feature_idxs)]))
-        self.biases['logit_output_b'] =  tf.Variable(tf.random_normal([len(self.binary_feature_idxs)]))
+        if len(self.decoder_layer_sizes) == 0: # trivial decoder -- feeds directly to output
+            last_decoder_layer_size = self.k
+        else:
+            last_decoder_layer_size = self.decoder_layer_sizes[-1]
+            
+        
+        self.weights['continuous_output_h'] =  tf.Variable(self.initialization_function([last_decoder_layer_size, len(self.continuous_feature_idxs)]))
+        self.biases['continuous_output_b'] =  tf.Variable(self.initialization_function([len(self.continuous_feature_idxs)]))
+        
+        self.weights['logit_output_h'] =  tf.Variable(self.initialization_function([last_decoder_layer_size,len(self.binary_feature_idxs)]))
+        self.biases['logit_output_b'] =  tf.Variable(self.initialization_function([len(self.binary_feature_idxs)]))
         
         if self.variational:
             self.hidden_mu = self.variational_encode(self.input_X, use_sigma_encoder = False)
@@ -476,7 +498,7 @@ class Autoencoder(DimReducer):
             self.eps = tf.random_normal(tf.shape(self.hidden_sigma), dtype=tf.float32, mean=0., stddev=1.0)
             self.hidden_state = self.hidden_mu + self.hidden_sigma * self.eps
         else:
-            self.hidden_state = self.encode(self.input_X, use_sigma_encoder = False)
+            self.hidden_state = self.encode(self.input_X)
         
         self.continuous_reconstruction, self.logit_reconstruction = self.decode(self.hidden_state)
         self.continuous_cost = .5 * tf.reduce_sum(tf.square(self.continuous_output_X - self.continuous_reconstruction))
@@ -487,32 +509,43 @@ class Autoencoder(DimReducer):
             #self.kl_div_cost = 1 + self.hidden_sigma - tf.square(self.hidden_mu) - tf.exp(self.hidden_sigma)
             #self.kl_div_cost = -0.5 * tf.reduce_sum(self.kl_div_cost)
             self.kl_div_cost = -.5 * (1 + 2 * tf.log(self.hidden_sigma) - tf.square(self.hidden_mu) - tf.square(self.hidden_sigma))
-            self.kl_div_cost = tf.reduce_sum(self.kl_div_cost)
+            self.kl_div_cost = tf.reduce_sum(self.kl_div_cost) * self.kl_weighting
             self.cost = self.continuous_cost + self.binary_cost + self.kl_div_cost
         else:
             self.cost = self.continuous_cost + self.binary_cost
         
-        self.optimizer = tf.train.AdamOptimizer(learning_rate = self.learning_rate).minimize(self.cost)
+        self.optimizer = self.optimization_method(learning_rate = self.learning_rate).minimize(self.cost)
         init = tf.global_variables_initializer()
         self.sess = tf.Session()
         self.sess.run(init)
         
-        train_batches, validation_batches = create_train_and_validation_batches(n_examples, self.batch_size, self.validation_frac)
-        # Training cycle
+        train_batches = divide_idxs_into_batches(self.train_idxs, self.batch_size)
+        validation_batches = divide_idxs_into_batches(self.validation_idxs, self.batch_size)
         n_epochs_without_improvement = 0 # number of epochs in which the validation loss has not improved. 
         validation_losses = []
         for epoch in range(self.max_epochs):
-            random.shuffle(train_batches)
+            random.shuffle(self.train_idxs)
+            train_batches = divide_idxs_into_batches(self.train_idxs, self.batch_size)
             total_epoch_train_cost = 0
             total_epoch_validation_cost = 0
+            total_epoch_continuous_cost = 0
+            total_epoch_binary_cost = 0
+            total_epoch_kl_div_cost = 0
             for idxs in train_batches:
                 feed_dict = {self.input_X:X[idxs, :], self.continuous_output_X:continuous_X[idxs, :], self.binary_output_X:binary_X[idxs,:]}
                 _, c = self.sess.run([self.optimizer, self.cost], feed_dict = feed_dict)
                 total_epoch_train_cost += c
             for idxs in validation_batches:
                 feed_dict = {self.input_X:X[idxs, :], self.continuous_output_X:continuous_X[idxs, :], self.binary_output_X:binary_X[idxs,:]}
-                c = self.sess.run(self.cost, feed_dict = feed_dict)
-                total_epoch_validation_cost += c
+                if self.variational:
+                    total_c, continuous_c, binary_c, kl_div_c = self.sess.run([self.cost, self.continuous_cost, self.binary_cost, self.kl_div_cost], feed_dict = feed_dict)
+                    total_epoch_validation_cost += total_c 
+                    total_epoch_continuous_cost += continuous_c
+                    total_epoch_binary_cost += binary_c
+                    total_epoch_kl_div_cost += kl_div_c
+                else:
+                    total_epoch_validation_cost += self.sess.run(self.cost, feed_dict = feed_dict)
+                
             if len(validation_losses) > 0 and not (total_epoch_validation_cost < min(validation_losses)):
                 print('Warning! Validation loss not decreasing this epoch')
                 n_epochs_without_improvement += 1
@@ -523,7 +556,10 @@ class Autoencoder(DimReducer):
                 n_epochs_without_improvement = 0
             
             validation_losses.append(total_epoch_validation_cost)
-            print('Epoch %i: train cost %2.3f, validation cost %2.3f' % (epoch, total_epoch_train_cost, total_epoch_validation_cost))
+            if self.variational:
+                print('Epoch %i: train cost %2.3f, validation cost %2.3f; kl cost %2.3f' % (epoch, total_epoch_train_cost, total_epoch_validation_cost, total_epoch_kl_div_cost))
+            else:
+                print('Epoch %i: train cost %2.3f, validation cost %2.3f' % (epoch, total_epoch_train_cost, total_epoch_validation_cost))
             
         plt.plot(validation_losses)
         plt.xlabel("Epoch")
@@ -564,5 +600,3 @@ class Autoencoder(DimReducer):
         print("Shape of autoencoder projections is", Z.shape)
         return Z
     
-    
-
