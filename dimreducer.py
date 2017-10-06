@@ -1,6 +1,6 @@
 import numpy as np
 import scipy.linalg as slin
-from df_utils import get_continuous_features_as_matrix, assert_zero_mean, add_id, remove_id_and_get_mat, make_age_bins, compute_column_means_with_incomplete_data, get_matrix_for_age_prediction, compute_correlation_matrix_with_incomplete_data, partition_dataframe_into_binary_and_continuous, divide_idxs_into_batches
+from multiphenotype_utils import get_continuous_features_as_matrix, assert_zero_mean, add_id, remove_id_and_get_mat, make_age_bins, compute_column_means_with_incomplete_data, compute_correlation_matrix_with_incomplete_data, partition_dataframe_into_binary_and_continuous, divide_idxs_into_batches,cluster_and_plot_correlation_matrix
 from IPython import embed
 from sklearn.linear_model import LinearRegression, LogisticRegression
 import sklearn.decomposition as decomp
@@ -9,7 +9,6 @@ from sklearn.covariance import EmpiricalCovariance
 from collections import Counter
 import matplotlib.pyplot as plt
 import seaborn as sns
-from analysis import cluster_and_plot_correlation_matrix
 import tensorflow as tf
 import time, random, os
 from scipy.special import expit

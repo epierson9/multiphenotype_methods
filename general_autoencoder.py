@@ -1,5 +1,5 @@
 import numpy as np
-from df_utils import (get_continuous_features_as_matrix, add_id, remove_id_and_get_mat, 
+from multiphenotype_utils import (get_continuous_features_as_matrix, add_id, remove_id_and_get_mat, 
     partition_dataframe_into_binary_and_continuous, divide_idxs_into_batches)
 import pandas as pd
 import tensorflow as tf
