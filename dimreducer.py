@@ -1,6 +1,6 @@
 import numpy as np
 import scipy.linalg as slin
-from multiphenotype_utils import cluster_and_plot_correlation_matrix, get_continuous_features_as_matrix, assert_zero_mean, add_id, remove_id_and_get_mat, make_age_bins, compute_column_means_with_incomplete_data, compute_correlation_matrix_with_incomplete_data, partition_dataframe_into_binary_and_continuous, divide_idxs_into_batches
+from df_utils import get_continuous_features_as_matrix, assert_zero_mean, add_id, remove_id_and_get_mat, make_age_bins, compute_column_means_with_incomplete_data, get_matrix_for_age_prediction, compute_correlation_matrix_with_incomplete_data, partition_dataframe_into_binary_and_continuous, divide_idxs_into_batches
 from IPython import embed
 from sklearn.linear_model import LinearRegression, LogisticRegression
 import sklearn.decomposition as decomp
@@ -9,8 +9,11 @@ from sklearn.covariance import EmpiricalCovariance
 from collections import Counter
 import matplotlib.pyplot as plt
 import seaborn as sns
+from analysis import cluster_and_plot_correlation_matrix
 import tensorflow as tf
 import time, random, os
+from scipy.special import expit
+
 
 """
 This file contains classes to compute multi-phenotypes. 
@@ -265,7 +268,6 @@ class LinearAgePredictor(LinearDimReducer):
         self.need_ages = True
         
     def data_preprocessing_function(self, df):
-        # TODO: get_matrix_for_age_prediction needs to be implemented. 
         X, self.feature_names = get_matrix_for_age_prediction(df, return_cols = True)
         return X
 
@@ -376,10 +378,10 @@ class Autoencoder(DimReducer):
             self.batch_size = 100
             self.optimization_method = tf.train.RMSPropOptimizer
             self.initialization_function = self.glorot_init
-            self.max_epochs_without_improving = 50
-            self.encoder_layer_sizes = [50, 20, 20] # encoder layers prior to innermost hidden state
+            self.max_epochs_without_improving = 10000
+            self.encoder_layer_sizes = [8] # encoder layers prior to innermost hidden state
             self.decoder_layer_sizes = [] # decoder layers after innermost hidden state
-            self.kl_weighting = 0
+            #self.kl_weighting = 1
             
         self.variational = variational
         print("Creating autoencoder. Variational: %s" % variational)
@@ -390,7 +392,7 @@ class Autoencoder(DimReducer):
         return X
     
     def encode(self, X):  
-        foward_prop = X
+        forward_prop = X
         for idx in range(len(self.encoder_layer_sizes)):
             forward_prop = tf.nn.sigmoid(tf.matmul(forward_prop, self.weights['encoder_h%i' % (idx)]) + self.biases['encoder_b%i' % (idx)])
         Z = tf.nn.sigmoid(tf.matmul(forward_prop, self.weights['encoder_to_hidden_state']) + self.biases['hidden_state'])
@@ -441,6 +443,7 @@ class Autoencoder(DimReducer):
         self.input_X = tf.placeholder("float32", [None, len(self.feature_names)])
         self.continuous_output_X = tf.placeholder("float32", [None, len(self.continuous_feature_idxs)])
         self.binary_output_X = tf.placeholder("float32", [None, len(self.binary_feature_idxs)])
+        self.kl_weighting = tf.placeholder("float32")
         
         # weights and biases
         self.weights = {}
@@ -460,7 +463,7 @@ class Autoencoder(DimReducer):
                 print("Adding sigma layer of same size")
                 self.weights['encoder_h%i_sigma' % encoder_layer_idx] = tf.Variable(self.initialization_function([input_dim, output_dim]))
                 self.biases['encoder_b%i_sigma' % encoder_layer_idx] = tf.Variable(self.initialization_function([output_dim]))
-                
+                  
         self.weights['encoder_to_hidden_state'] =  tf.Variable(self.initialization_function([self.encoder_layer_sizes[-1], self.k]))
         self.biases['hidden_state'] =  tf.Variable(self.initialization_function([self.k]))
         print("Added encoder-to-hidden state layer with input dimension %i and output dimension %i" % (self.encoder_layer_sizes[-1], self.k))
@@ -501,8 +504,12 @@ class Autoencoder(DimReducer):
             self.hidden_state = self.encode(self.input_X)
         
         self.continuous_reconstruction, self.logit_reconstruction = self.decode(self.hidden_state)
-        self.continuous_cost = .5 * tf.reduce_sum(tf.square(self.continuous_output_X - self.continuous_reconstruction))
+        self.continuous_cost = .5 * tf.reduce_sum(tf.square(self.continuous_output_X - self.continuous_reconstruction))        
         self.binary_cost = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(logits = self.logit_reconstruction, labels = self.binary_output_X))
+        print('here!')
+        print(self.binary_cost)
+        print(self.binary_output_X)
+        print(self.logit_reconstruction)
         if self.variational:
             # need to compute KL divergence loss and add this in. 
             # See eq 10 here. I am not totally sure this is correct. 
@@ -531,12 +538,14 @@ class Autoencoder(DimReducer):
             total_epoch_continuous_cost = 0
             total_epoch_binary_cost = 0
             total_epoch_kl_div_cost = 0
+            epoch_kl_weighting =  expit((epoch - 200) / 20)
+            print("Epoch kl weighting is %2.3f" % epoch_kl_weighting)
             for idxs in train_batches:
-                feed_dict = {self.input_X:X[idxs, :], self.continuous_output_X:continuous_X[idxs, :], self.binary_output_X:binary_X[idxs,:]}
+                feed_dict = {self.input_X:X[idxs, :], self.continuous_output_X:continuous_X[idxs, :], self.binary_output_X:binary_X[idxs,:], self.kl_weighting:epoch_kl_weighting}
                 _, c = self.sess.run([self.optimizer, self.cost], feed_dict = feed_dict)
                 total_epoch_train_cost += c
             for idxs in validation_batches:
-                feed_dict = {self.input_X:X[idxs, :], self.continuous_output_X:continuous_X[idxs, :], self.binary_output_X:binary_X[idxs,:]}
+                feed_dict = {self.input_X:X[idxs, :], self.continuous_output_X:continuous_X[idxs, :], self.binary_output_X:binary_X[idxs,:], self.kl_weighting:1}
                 if self.variational:
                     total_c, continuous_c, binary_c, kl_div_c = self.sess.run([self.cost, self.continuous_cost, self.binary_cost, self.kl_div_cost], feed_dict = feed_dict)
                     total_epoch_validation_cost += total_c 
@@ -600,3 +609,48 @@ class Autoencoder(DimReducer):
         print("Shape of autoencoder projections is", Z.shape)
         return Z
     
+    def compute_elbo(self, df, continuous_variance = 1):
+        assert self.variational # can't compute elbo otherwise, makes no sense
+        chunk_size = 10000 # break into chunks so GPU doesn't run out of memory
+        start = 0
+        Zs = []
+        X, binary_feature_idxs, continuous_feature_idxs, feature_names = partition_dataframe_into_binary_and_continuous(df)
+        continuous_X = X[:, continuous_feature_idxs]
+        n_continuous_features = len(continuous_feature_idxs)
+        binary_X = X[:, binary_feature_idxs]
+        print("Computing ELBO with %i continuous features, %i binary features, %i examples, continuous variance = %2.3f" %
+              (len(continuous_feature_idxs), 
+               len(binary_feature_idxs), 
+               len(X), 
+               continuous_variance))
+                                                                                                               
+        total_cost = 0
+        while start < len(X):
+            end = start + chunk_size
+            
+            feed_dict = {self.input_X:X[start:end, :], 
+                         self.continuous_output_X:continuous_X[start:end, :], 
+                         self.binary_output_X:binary_X[start:end,:], 
+                        self.kl_weighting:1}
+            n_examples_in_chunk = feed_dict[self.input_X].shape[0]
+            continuous_c, binary_c, kl_c = self.sess.run(
+                [self.continuous_cost, self.binary_cost, self.kl_div_cost], 
+                feed_dict = feed_dict)
+            
+            # https://www.statlect.com/fundamentals-of-statistics/normal-distribution-maximum-likelihood
+            # we have to add a constant offset for the Gaussian terms
+            constant_offset_per_sample_and_feature = .5 * np.log(2 * np.pi) + .5 * np.log(continuous_variance)
+            # we multiply that by the number of features and the number of samples
+            # and then add to the continuous cost (scaled by the variance)
+            gaussian_c = constant_offset_per_sample_and_feature * n_continuous_features * n_examples_in_chunk + continuous_c / continuous_variance
+            total_cost = total_cost + binary_c + kl_c + gaussian_c
+
+            start += chunk_size
+        average_elbo = -total_cost / len(X)
+        print("Average ELBO per sample = %2.3f" % average_elbo)
+        return average_elbo
+
+    
+        
+    
+
