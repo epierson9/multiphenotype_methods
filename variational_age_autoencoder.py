@@ -11,7 +11,7 @@ from variational_autoencoder import VariationalAutoencoder
 
 class VariationalAgeAutoencoder(VariationalAutoencoder):
     """
-    Implements a standard variational autoencoder (diagonal Gaussians everywhere).
+    Implements a variational autoencoder with an age prior.
     """    
     def __init__(self,
                  k_age,
@@ -40,19 +40,16 @@ class VariationalAgeAutoencoder(VariationalAutoencoder):
         """
         _, binary_loss, continuous_loss, _ = super(VariationalAutoencoder, self).get_loss()   
 
-        # This creates a matrix where each row looks like 
-        # [self.Z_age_coef * age] (repeated self.k_age times) + [0] (repeated self.k - self.k_age times)
-        # np.array(self.Z_age_coef * self.ages)
-        # age_prior_mat = np.array([self.Z_age_coef * self.ages] * self.k_age + [0] * (self.k - self.k_age))
-
+        # Subtract off self.Z_age_coef * self.ages from the components of self.Z_mu 
+        # that are supposed to correlate with age
+        # This assumes that the age-related components are drawn from N(Z_age_coef * age, 1)
         Z_mu_age = self.Z_mu[:, :self.k_age] - self.Z_age_coef * tf.reshape(self.ages, (-1, 1)) # Relies on broadcasting
-        Z_mu_others = self.Z_mu[:, self.k_age:]
-        Z_mu_diffs = tf.concat((Z_mu_age, Z_mu_others), axis=1)
 
-        # Z_mu_age, Z_mu_others = tf.gather(self.Z_mu, indices=self.binary_feature_idxs, axis=1)
-        # Z_mu_diffs = self.Z_mu
-        # Z_mu_diffs[:, :self.k_age] = self.Z_age_coef * self.ages
-        # Z_mu_diffs[:, 1] = self.Z_age_coef * self.ages
+        # Leave the other components untouched
+        Z_mu_others = self.Z_mu[:, self.k_age:]
+
+        # Z_mu_diffs is the difference between Z_mu and the priors
+        Z_mu_diffs = tf.concat((Z_mu_age, Z_mu_others), axis=1)
 
         kl_div_loss = -.5 * (
             1 + 

@@ -4,7 +4,7 @@ from multiphenotype_utils import (get_continuous_features_as_matrix, add_id, rem
 import pandas as pd
 import tensorflow as tf
 from dimreducer import DimReducer
-
+from scipy.stats import pearsonr
 
 class GeneralAutoencoder(DimReducer):
     """
@@ -51,6 +51,7 @@ class GeneralAutoencoder(DimReducer):
 
         if self.need_ages:
             ages = df['age_sex___age'].values
+            ages -= np.mean(ages)
             return X, ages
         else:    
             return X
@@ -169,9 +170,14 @@ class GeneralAutoencoder(DimReducer):
                         # make sure latent state for VAE looks ok by printing out diagnostics
                         sampled_Z, mu, sigma = self.sess.run([self.Z, self.Z_mu, self.Z_sigma], feed_dict = {self.X:self.train_data})
                         sampled_cov_matrix = np.cov(sampled_Z.transpose())
-                        print('mean value of each Z component')
+                        print('mean value of each Z component:')
                         print(sampled_Z.mean(axis = 0))
-                        print("diagonal elements of Z covariance matrix")
+                        if self.need_ages:
+                            print('correlation of each Z component with age:')
+                            for i in range(sampled_Z.shape[1]):
+                                print('%.2f' % pearsonr(sampled_Z[:, i], self.train_ages)[0], end=' ')
+                            print('')
+                        print("diagonal elements of Z covariance matrix:")
                         print(np.diag(sampled_cov_matrix))
                         upper_triangle = np.triu_indices(n = sampled_cov_matrix.shape[0], k = 1)
                         print("mean absolute value of off-diagonal covariance elements: %2.3f" % 
@@ -194,6 +200,12 @@ class GeneralAutoencoder(DimReducer):
                         n_epochs_without_improvement = 0
 
     def fill_feed_dict(self, data, ages=None, idxs=None):
+        """
+        Returns a dictionary that has two keys:
+            self.ages: ages[idxs]
+            self.X: data[idxs, :]
+        and handles various parameters being set to None.
+        """
         if idxs is not None:
             if ages is not None:
                 indexed_ages = ages[idxs]
