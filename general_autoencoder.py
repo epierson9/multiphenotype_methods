@@ -48,7 +48,12 @@ class GeneralAutoencoder(DimReducer):
         print("Number of continuous features: %i; binary features %i" % (
             len(self.continuous_feature_idxs), 
             len(self.binary_feature_idxs)))
-        return X
+
+        if self.need_ages:
+            ages = df['age_sex___age'].values
+            return X, ages
+        else:    
+            return X
 
     def split_into_binary_and_continuous(self, X):
         if len(self.binary_feature_idxs) > 0:        
@@ -83,18 +88,29 @@ class GeneralAutoencoder(DimReducer):
         
         assert train_df.shape[1] == valid_df.shape[1]
         assert np.all(train_df.columns == valid_df.columns)
-        train_data = self.data_preprocessing_function(train_df)
-        valid_data = self.data_preprocessing_function(valid_df)
+        
+        if self.need_ages:
+            train_data, train_ages = self.data_preprocessing_function(train_df)
+            valid_data, valid_ages = self.data_preprocessing_function(valid_df)
+            self._fit_from_processed_data(train_data, valid_data, train_ages, valid_ages)
+        else:
+            train_data = self.data_preprocessing_function(train_df)
+            valid_data = self.data_preprocessing_function(valid_df)
+            self._fit_from_processed_data(train_data, valid_data)
 
-        self._fit_from_processed_data(train_data, valid_data)
-
-    def _fit_from_processed_data(self, train_data, valid_data):
+    def _fit_from_processed_data(self, train_data, valid_data, train_ages=None, valid_ages=None):
         """
         train_data and valid_data are data matrices
         """
+        if self.need_ages:
+            assert train_ages is not None
+            assert valid_ages is not None
+        
         self.train_data = train_data
         self.valid_data = valid_data
-        
+        self.train_ages = train_ages
+        self.valid_ages = valid_ages
+
         print("Train size %i; valid size %i" % (
             self.train_data.shape[0], self.valid_data.shape[0]))
                 
@@ -104,6 +120,7 @@ class GeneralAutoencoder(DimReducer):
             np.random.seed(self.random_seed)
 
             self.X = tf.placeholder("float32", [None, len(self.feature_names)])
+            self.ages = tf.placeholder("float32", None)
 
             self.init_network()
             self.Z = self.encode(self.X)
@@ -124,15 +141,17 @@ class GeneralAutoencoder(DimReducer):
             for epoch in range(self.max_epochs):
                 # print('eps', self.sess.run(self.eps, feed_dict={self.X:self.train_data}))
 
-                self._train_epoch(self.train_data)
+                self._train_epoch(self.train_data, self.train_ages)
 
                 if (epoch % self.num_epochs_before_eval == 0) or (epoch == self.max_epochs - 1):
+                    
                     train_mean_combined_loss, train_mean_binary_loss, \
                         train_mean_continuous_loss, train_mean_reg_loss = \
-                        self.minibatch_mean_eval(self.train_data)
+                        self.minibatch_mean_eval(self.train_data, self.train_ages)
                     valid_mean_combined_loss, valid_mean_binary_loss, \
                         valid_mean_continuous_loss, valid_mean_reg_loss = \
-                        self.minibatch_mean_eval(self.valid_data)                    
+                        self.minibatch_mean_eval(self.valid_data, self.valid_ages)    
+
                     print('Epoch %i:\nTrain: mean loss %2.3f (%2.3f + %2.3f + %2.3f).  '
                         'Valid: mean loss %2.3f (%2.3f + %2.3f + %2.3f)' % (
                         epoch, 
@@ -145,6 +164,7 @@ class GeneralAutoencoder(DimReducer):
                         valid_mean_continuous_loss,
                         valid_mean_reg_loss
                         ))
+
                     if 'encoder_h0_sigma' in self.weights:
                         # make sure latent state for VAE looks ok by printing out diagnostics
                         sampled_Z, mu, sigma = self.sess.run([self.Z, self.Z_mu, self.Z_sigma], feed_dict = {self.X:self.train_data})
@@ -162,10 +182,6 @@ class GeneralAutoencoder(DimReducer):
                         print('mean value of Z_sigma')
                         print(sigma.mean(axis = 0))
                         
-                        
-
-                    
-
                     # fmin ignores nan's, so this handles the case when epoch=0
                     min_valid_loss = np.fmin(min_valid_loss, valid_mean_combined_loss)
                     if min_valid_loss < valid_mean_combined_loss:
@@ -177,12 +193,35 @@ class GeneralAutoencoder(DimReducer):
                     else:
                         n_epochs_without_improvement = 0
 
+    def fill_feed_dict(self, data, ages=None, idxs=None):
+        if idxs is not None:
+            if ages is not None:
+                indexed_ages = ages[idxs]
+            else:
+                indexed_ages = ages
+            indexed_data = data[idxs, :]
+        else:
+            indexed_ages = ages
+            indexed_data = data
 
-    def minibatch_mean_eval(self, data):
+       
+        if self.need_ages:
+            feed_dict = {
+                self.ages:indexed_ages, 
+                self.X:indexed_data}
+        else:
+            feed_dict = {self.X:indexed_data}
+
+        return feed_dict
+
+    def minibatch_mean_eval(self, data, ages):
         """
         Takes in a data matrix and computes the average per-example loss on it.
         Note: 'data' in this class is always a matrix.
         """
+        if self.need_ages:
+            assert ages is not None
+
         batches = divide_idxs_into_batches(
             np.arange(data.shape[0]), 
             self.batch_size)
@@ -193,7 +232,8 @@ class GeneralAutoencoder(DimReducer):
         mean_reg_loss = 0
 
         for idxs in batches:
-            feed_dict = {self.X:data[idxs, :]}
+            feed_dict = self.fill_feed_dict(data, ages, idxs)
+            
             combined_loss, binary_loss, continuous_loss, reg_loss = self.sess.run(
                 [self.combined_loss, self.binary_loss, self.continuous_loss, self.reg_loss], 
                 feed_dict=feed_dict)
@@ -205,18 +245,22 @@ class GeneralAutoencoder(DimReducer):
         return mean_combined_loss, mean_binary_loss, mean_continuous_loss, mean_reg_loss
 
 
-    def _train_epoch(self, data):
+    def _train_epoch(self, data, ages):
+        if self.need_ages:
+            assert ages is not None
 
         perm = np.arange(data.shape[0])
         np.random.shuffle(perm)
         data = data[perm, :]
+        if ages is not None:
+            ages = ages[perm]
 
         train_batches = divide_idxs_into_batches(
             np.arange(data.shape[0]), 
             self.batch_size)
         
-        for idxs in train_batches:
-            feed_dict = {self.X:data[idxs, :]}          
+        for idxs in train_batches:            
+            feed_dict = self.fill_feed_dict(data, ages, idxs)        
             self.sess.run([self.optimizer], feed_dict=feed_dict)
 
 

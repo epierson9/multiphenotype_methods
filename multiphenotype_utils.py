@@ -77,7 +77,9 @@ def cluster_and_plot_correlation_matrix(C, column_names, how_to_sort):
         if(np.abs(C[i, i] - 1) > 1e-6):
             print("Warning: correlation matrix diagonal entry is not one (%2.8f); setting to one for visualization purposes." % C[i, i].mean())
         C[i, i] = 1 # make it exactly one so hierarchical clustering doesn't complain. 
-            
+    C[C > 1] = 1
+    C[C < -1] = -1
+
     assert how_to_sort in ['alphabetically', 'hierarchical']
     assert(len(C) == len(column_names))
     plt.set_cmap('bwr')
