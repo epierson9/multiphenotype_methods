@@ -1,6 +1,12 @@
 import math
 import pandas as pd
 
+def move_last_col_to_first(df):
+    cols = df.columns.tolist()
+    cols = cols[-1:] + cols[:-1]
+    df = df.loc[:, cols]
+    return df
+
 def compute_correlation_matrix_with_incomplete_data(df, correlation_type):
     """
     Given a dataframe or numpy array df and a correlation type (spearman, pearson, or covariance) computes the pairwise correlations between 
