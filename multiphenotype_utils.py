@@ -1,5 +1,6 @@
 import math
 import pandas as pd
+import numpy as np
 
 def move_last_col_to_first(df):
     cols = df.columns.tolist()
