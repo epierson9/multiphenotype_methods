@@ -50,7 +50,7 @@ class GeneralAutoencoder(DimReducer):
             len(self.binary_feature_idxs)))
 
         if self.need_ages:
-            ages = df['age_sex___age'].values
+            ages = np.array(df['age_sex___age'].values, dtype=np.float32)
             ages -= np.mean(ages)
             return X, ages
         else:    
