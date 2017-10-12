@@ -1,4 +1,5 @@
 import math
+import pandas as pd
 
 def compute_correlation_matrix_with_incomplete_data(df, correlation_type):
     """
