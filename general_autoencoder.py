@@ -49,18 +49,14 @@ class GeneralAutoencoder(DimReducer):
             len(self.continuous_feature_idxs), 
             len(self.binary_feature_idxs)))
 
-        ages = None
-        if self.need_ages:
-            ages = np.array(df['age_sex___age'].values, dtype=np.float32)
-            ages -= np.mean(ages)
-        return X, ages
+        return X
         
     def get_projections(self, df, **projection_kwargs):
         """
         use the fitted model to get projections for df. 
         """
         print("Getting projections using method %s." % self.__class__.__name__)
-        X, ages = self.data_preprocessing_function(df)
+        X = self.data_preprocessing_function(df)
         Z = self._get_projections_from_processed_data(X, **projection_kwargs)
         Z_df = add_id(Z, df)
         Z_df.columns = ['individual_id'] + ['z%s' % i for i in range(Z.shape[1])]
@@ -95,14 +91,26 @@ class GeneralAutoencoder(DimReducer):
     def get_loss():
         raise NotImplementedError
 
+    def get_ages(self, df):
+        ages = np.array(df['age_sex___age'].values, dtype=np.float32)
+        ages -= np.mean(ages)
+        return ages
+
     def fit(self, train_df, valid_df):
         print("Fitting model using method %s." % self.__class__.__name__)
         
         assert train_df.shape[1] == valid_df.shape[1]
         assert np.all(train_df.columns == valid_df.columns)
         
-        train_data, train_ages = self.data_preprocessing_function(train_df)
-        valid_data, valid_ages = self.data_preprocessing_function(valid_df)
+        train_data = self.data_preprocessing_function(train_df)
+        valid_data = self.data_preprocessing_function(valid_df)
+        
+        train_ages = None
+        valid_ages = None                
+        if self.need_ages:
+            train_ages = self.get_ages(train_df)
+            valid_ages = self.get_ages(valid_df)
+            
         self._fit_from_processed_data(train_data, valid_data, train_ages, valid_ages)
     
     def _fit_from_processed_data(self, train_data, valid_data, train_ages=None, valid_ages=None):
