@@ -21,7 +21,7 @@ class SparseVariationalAgeAutoencoder(VariationalAgeAutoencoder):
                  sparsity_weighting = .1,
                  **kwargs):
 
-        super(VariationalAgeAutoencoder, self).__init__(k_age = k_age, 
+        super(SparseVariationalAgeAutoencoder, self).__init__(k_age = k_age, 
                                                         Z_age_coef = Z_age_coef, 
                                                         **kwargs)   
         # Does not include input_dim, but includes last hidden layer
