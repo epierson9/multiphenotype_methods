@@ -14,6 +14,7 @@ class VariationalLaplacianAutoencoder(StandardAutoencoder):
     This code is identical to the Gaussian variational except where explicitly noted in comments. 
     """    
     def __init__(self, 
+                 kl_weighting = 1,
                  **kwargs):
 
         super(VariationalLaplacianAutoencoder, self).__init__(**kwargs)   
@@ -24,7 +25,7 @@ class VariationalLaplacianAutoencoder(StandardAutoencoder):
         # self.decoder_layer_sizes = decoder_layer_sizes
 
         self.initialization_function = self.glorot_init
-        self.kl_weighting = 1
+        self.kl_weighting = kl_weighting
         self.non_linearity = tf.nn.sigmoid
         self.sigma_scaling = .1
 
@@ -124,7 +125,7 @@ class VariationalLaplacianAutoencoder(StandardAutoencoder):
                 kl_div_loss,
                 axis=1),
             axis=0) * self.kl_weighting
-
+        kl_div_loss = kl_div_loss
         combined_loss = binary_loss + continuous_loss + kl_div_loss
 
         return combined_loss, binary_loss, continuous_loss, kl_div_loss  

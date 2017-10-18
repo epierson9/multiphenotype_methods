@@ -40,7 +40,7 @@ class GeneralAutoencoder(DimReducer):
         self.batch_size = 100
         self.learning_rate = learning_rate
         self.optimization_method = tf.train.AdamOptimizer
-        self.initialization_function = tf.random_normal        
+        self.initialization_function = tf.random_normal
 
     def data_preprocessing_function(self, df):
         X, self.binary_feature_idxs, self.continuous_feature_idxs, self.feature_names = \
@@ -155,7 +155,6 @@ class GeneralAutoencoder(DimReducer):
             print('Norm of params: %s' % np.linalg.norm(params['encoder_h0']))
             for epoch in range(self.max_epochs):
                 # print('eps', self.sess.run(self.eps, feed_dict={self.X:self.train_data}))
-
                 self._train_epoch(self.train_data, self.train_ages)
 
                 if (epoch % self.num_epochs_before_eval == 0) or (epoch == self.max_epochs - 1):
@@ -237,7 +236,6 @@ class GeneralAutoencoder(DimReducer):
                 self.X:indexed_data}
         else:
             feed_dict = {self.X:indexed_data}
-
         return feed_dict
 
     def minibatch_mean_eval(self, data, ages):
@@ -286,7 +284,7 @@ class GeneralAutoencoder(DimReducer):
             self.batch_size)
         
         for idxs in train_batches:            
-            feed_dict = self.fill_feed_dict(data, ages, idxs)        
+            feed_dict = self.fill_feed_dict(data, ages, idxs)      
             self.sess.run([self.optimizer], feed_dict=feed_dict)
 
 
