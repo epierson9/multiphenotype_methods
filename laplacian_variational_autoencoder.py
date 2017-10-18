@@ -16,7 +16,7 @@ class VariationalLaplacianAutoencoder(StandardAutoencoder):
     def __init__(self, 
                  **kwargs):
 
-        super(VariationalAutoencoder, self).__init__(**kwargs)   
+        super(VariationalLaplacianAutoencoder, self).__init__(**kwargs)   
         # Does not include input_dim, but includes last hidden layer
         # self.encoder_layer_sizes = encoder_layer_sizes
         # self.k = self.encoder_layer_sizes[-1]        
@@ -91,13 +91,14 @@ class VariationalLaplacianAutoencoder(StandardAutoencoder):
         # Sample from Laplacian(mu, sigma). 
         # See https://en.wikipedia.org/wiki/Laplace_distribution#Generating_random_variables_according_to_the_Laplace_distribution
         # Z = mu - b * sgn(eps) * ln(1 - 2|eps|) where eps ~ U(-.5, .5)
+        # add in small constant (1e-8) for numerical stability in sampling; otherwise log can explode. 
 
         self.eps = tf.random_uniform(tf.shape(self.Z_mu), 
                                      dtype=tf.float32, 
                                      minval=-.5, 
                                      maxval=.5,
                                      seed=self.random_seed)
-        Z = self.Z_mu - self.Z_sigma * tf.sign(self.eps) * tf.log(1 - 2 * tf.abs(self.eps))
+        Z = self.Z_mu - self.Z_sigma * tf.sign(self.eps) * tf.log(1 - 2 * tf.abs(self.eps) + 1e-8) 
         return Z
 
 
@@ -105,7 +106,7 @@ class VariationalLaplacianAutoencoder(StandardAutoencoder):
         """
         Uses self.X, self.Xr, self.Z_sigma, self.Z_mu, self.kl_weighting
         """
-        _, binary_loss, continuous_loss, _ = super(VariationalAutoencoder, self).get_loss()   
+        _, binary_loss, continuous_loss, _ = super(VariationalLaplacianAutoencoder, self).get_loss()   
         
         # Important: this deviates from the standard Gaussian autoencoder
         # We assume that the prior is a Laplacian with sigma = 1, mu = 0.
