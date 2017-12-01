@@ -117,6 +117,9 @@ class VariationalAutoencoder(StandardAutoencoder):
     def compute_elbo(self, df, continuous_variance=1):
         data, binary_feature_idxs, continuous_feature_idxs, feature_names = \
             partition_dataframe_into_binary_and_continuous(df)
+        ages = None
+        if self.need_ages:
+            ages = self.get_ages(df)
         assert np.all(binary_feature_idxs == self.binary_feature_idxs)
         assert np.all(continuous_feature_idxs == self.continuous_feature_idxs)
         assert np.all(feature_names == self.feature_names)
@@ -134,8 +137,9 @@ class VariationalAutoencoder(StandardAutoencoder):
         mean_binary_loss = 0
         mean_continuous_loss = 0
         mean_reg_loss = 0
+
         for i in range(num_iter):              
-            combined_loss, binary_loss, continuous_loss, reg_loss = self.minibatch_mean_eval(data)
+            combined_loss, binary_loss, continuous_loss, reg_loss = self.minibatch_mean_eval(data, ages)
             mean_combined_loss += combined_loss / num_iter
             mean_binary_loss += binary_loss / num_iter
             mean_continuous_loss += continuous_loss / num_iter
