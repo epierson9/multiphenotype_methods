@@ -8,7 +8,7 @@ from dimreducer import DimReducer
 from general_autoencoder import GeneralAutoencoder
 from standard_autoencoder import StandardAutoencoder
 
-class VariationalLaplacianAutoencoder(StandardAutoencoder):
+class VariationalLaplacianAutoencoder(VariationalAutoencoder):
     """
     Implements a variational autoencoder with independent Laplacian priors. 
     This code is identical to the Gaussian variational except where explicitly noted in comments. 
@@ -28,43 +28,7 @@ class VariationalLaplacianAutoencoder(StandardAutoencoder):
         self.kl_weighting = kl_weighting
         self.non_linearity = tf.nn.sigmoid
         self.sigma_scaling = .1
-
-    def init_network(self):
-        self.weights = {}
-        self.biases = {}        
-        
-        # Encoder layers.         
-        for encoder_layer_idx, encoder_layer_size in enumerate(self.encoder_layer_sizes):
-            if encoder_layer_idx == 0:
-                input_dim = len(self.feature_names)
-            else:
-                input_dim = self.encoder_layer_sizes[encoder_layer_idx - 1]
-            output_dim = self.encoder_layer_sizes[encoder_layer_idx]
-            print("Added encoder layer with input dimension %i and output dimension %i" % (input_dim, output_dim))
-            self.weights['encoder_h%i' % encoder_layer_idx] = tf.Variable(
-                self.initialization_function([input_dim, output_dim]))
-            self.biases['encoder_b%i' % encoder_layer_idx] = tf.Variable(
-                self.initialization_function([output_dim]))
-            self.weights['encoder_h%i_sigma' % encoder_layer_idx] = tf.Variable(
-                self.initialization_function([input_dim, output_dim]))
-            self.biases['encoder_b%i_sigma' % encoder_layer_idx] = tf.Variable(
-                self.initialization_function([output_dim])) 
-
-        # Decoder layers. 
-        self.decoder_layer_sizes.append(len(self.feature_names))
-        for decoder_layer_idx, decoder_layer_size in enumerate(self.decoder_layer_sizes):
-            if decoder_layer_idx == 0:
-                input_dim = self.k
-            else:
-                input_dim = self.decoder_layer_sizes[decoder_layer_idx - 1]
-            output_dim = self.decoder_layer_sizes[decoder_layer_idx]
-            print("Added decoder layer with input dimension %i and output dimension %i" % (input_dim, output_dim))
-            self.weights['decoder_h%i' % decoder_layer_idx] = tf.Variable(
-                self.initialization_function([input_dim, output_dim]))
-            self.biases['decoder_b%i' % decoder_layer_idx] = tf.Variable(
-                self.initialization_function([output_dim]))
                 
-
     def encode(self, X):          
         num_layers = len(self.encoder_layer_sizes)
         # Get mu 
@@ -119,49 +83,12 @@ class VariationalLaplacianAutoencoder(StandardAutoencoder):
         # KL(Q, P) = -log(sigma) - 1 + abs(mu) + sigma * exp(-abs(mu) / sigma)
         # which vanishes, as it should, when sigma = 1, mu = 0. 
         
-        kl_div_loss = -tf.log(self.Z_sigma) - 1 + tf.abs(self.Z_mu) + self.Z_sigma * tf.exp(tf.abs(self.Z_mu) / self.Z_sigma)
+        kl_div_loss = -tf.log(self.Z_sigma) - 1 + tf.abs(self.Z_mu) + self.Z_sigma * tf.exp(-tf.abs(self.Z_mu) / self.Z_sigma)
         kl_div_loss = tf.reduce_mean(
             tf.reduce_sum(
                 kl_div_loss,
                 axis=1),
             axis=0) * self.kl_weighting
-        kl_div_loss = kl_div_loss
         combined_loss = binary_loss + continuous_loss + kl_div_loss
 
         return combined_loss, binary_loss, continuous_loss, kl_div_loss  
-
-
-    def compute_elbo(self, df, continuous_variance=1):
-        data, binary_feature_idxs, continuous_feature_idxs, feature_names = \
-            partition_dataframe_into_binary_and_continuous(df)
-        assert np.all(binary_feature_idxs == self.binary_feature_idxs)
-        assert np.all(continuous_feature_idxs == self.continuous_feature_idxs)
-        assert np.all(feature_names == self.feature_names)
-
-        print(("Computing ELBO with %i continuous features, %i binary features, "
-            "%i examples, continuous variance = %2.3f") %
-              (len(continuous_feature_idxs), 
-               len(binary_feature_idxs), 
-               len(data), 
-               continuous_variance))
-
-        # https://www.statlect.com/fundamentals-of-statistics/normal-distribution-maximum-likelihood
-        num_iter = 1
-        mean_combined_loss = 0
-        mean_binary_loss = 0
-        mean_continuous_loss = 0
-        mean_reg_loss = 0
-        for i in range(num_iter):              
-            combined_loss, binary_loss, continuous_loss, reg_loss = self.minibatch_mean_eval(data)
-            mean_combined_loss += combined_loss / num_iter
-            mean_binary_loss += binary_loss / num_iter
-            mean_continuous_loss += continuous_loss / num_iter
-            mean_reg_loss += reg_loss / num_iter
-                    
-        
-        constant_offset_per_sample_and_feature = .5 * np.log(2 * np.pi) + .5 * np.log(continuous_variance)
-        mean_continuous_loss = constant_offset_per_sample_and_feature * len(continuous_feature_idxs) + mean_continuous_loss / continuous_variance
-        mean_combined_loss = mean_binary_loss + mean_continuous_loss + mean_reg_loss
-        elbo = -mean_combined_loss
-        print("Average ELBO per sample = %2.3f" % elbo)
-        return elbo

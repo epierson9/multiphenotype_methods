@@ -14,6 +14,7 @@ from variational_age_autoencoder import VariationalAgeAutoencoder
 class SparseVariationalAgeAutoencoder(VariationalAgeAutoencoder):
     """
     Implements a variational autoencoder with an age prior and sparsity.
+    The loss function for this only really makes sense when we have a single decoder layer, so we assert that. 
     """    
     def __init__(self,
                  k_age,
@@ -39,6 +40,9 @@ class SparseVariationalAgeAutoencoder(VariationalAgeAutoencoder):
         self.non_linearity = tf.nn.sigmoid
         self.sigma_scaling = .1
         self.sparsity_weighting = sparsity_weighting
+        
+        # assert we only have a single decoder layer (otherwise the sparsity loss doesn't make sense). 
+        assert(len([layer_name for layer_name in self.weights if 'decoder' in layer_name]) == 1)
 
     def get_loss(self):
         """
