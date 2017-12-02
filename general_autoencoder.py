@@ -148,9 +148,9 @@ class GeneralAutoencoder(DimReducer):
             init = tf.global_variables_initializer()
             
             # with tf.Session() as self.sess:
-            config = tf.ConfigProto(gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=.4))
-            self.sess = tf.Session(config=config)  
-            #self.sess = tf.Session()  
+            #config = tf.ConfigProto(gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=.4))
+            #self.sess = tf.Session(config=config)  
+            self.sess = tf.Session()  
             self.sess.run(init)
             min_valid_loss = np.nan
             n_epochs_without_improvement = 0
