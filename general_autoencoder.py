@@ -4,6 +4,7 @@ from multiphenotype_utils import (get_continuous_features_as_matrix, add_id, rem
 import pandas as pd
 import tensorflow as tf
 from dimreducer import DimReducer
+import time
 from scipy.stats import pearsonr
 
 class GeneralAutoencoder(DimReducer):
@@ -41,6 +42,7 @@ class GeneralAutoencoder(DimReducer):
         self.learning_rate = learning_rate
         self.optimization_method = tf.train.AdamOptimizer
         self.initialization_function = tf.random_normal
+        self.all_losses_by_epoch = []
 
     def data_preprocessing_function(self, df):
         X, self.binary_feature_idxs, self.continuous_feature_idxs, self.feature_names = \
@@ -146,7 +148,9 @@ class GeneralAutoencoder(DimReducer):
             init = tf.global_variables_initializer()
             
             # with tf.Session() as self.sess:
-            self.sess = tf.Session()  
+            config = tf.ConfigProto(gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=.4))
+            self.sess = tf.Session(config=config)  
+            #self.sess = tf.Session()  
             self.sess.run(init)
             min_valid_loss = np.nan
             n_epochs_without_improvement = 0
@@ -155,8 +159,9 @@ class GeneralAutoencoder(DimReducer):
             print('Norm of params: %s' % np.linalg.norm(params['encoder_h0']))
             for epoch in range(self.max_epochs):
                 # print('eps', self.sess.run(self.eps, feed_dict={self.X:self.train_data}))
+                t0 = time.time()
                 self._train_epoch(self.train_data, self.train_ages)
-
+                
                 if (epoch % self.num_epochs_before_eval == 0) or (epoch == self.max_epochs - 1):
                     
                     train_mean_combined_loss, train_mean_binary_loss, \
@@ -178,6 +183,17 @@ class GeneralAutoencoder(DimReducer):
                         valid_mean_continuous_loss,
                         valid_mean_reg_loss
                         ))
+                    # log losses so that we can see if the model's training well. 
+                    self.all_losses_by_epoch.append({'epoch':epoch, 
+                                                    'train_mean_combined_loss':train_mean_combined_loss, 
+                                                    'train_mean_binary_loss':train_mean_binary_loss,
+                                                    'train_mean_continuous_loss':train_mean_continuous_loss,
+                                                    'train_mean_reg_loss':train_mean_reg_loss,
+                                                    'valid_mean_combined_loss':valid_mean_combined_loss,
+                                                    'valid_mean_binary_loss':valid_mean_binary_loss,
+                                                    'valid_mean_continuous_loss':valid_mean_continuous_loss,
+                                                    'valid_mean_reg_loss':valid_mean_reg_loss})
+                                                     
 
                     if 'encoder_h0_sigma' in self.weights:
                         # make sure latent state for VAE looks ok by printing out diagnostics
@@ -211,6 +227,7 @@ class GeneralAutoencoder(DimReducer):
                             break        
                     else:
                         n_epochs_without_improvement = 0
+                print("Total time to run epoch: %2.3f seconds" % (time.time() - t0))
 
     def fill_feed_dict(self, data, ages=None, idxs=None):
         """
