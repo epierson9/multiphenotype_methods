@@ -7,7 +7,7 @@ from dimreducer import DimReducer
 
 from general_autoencoder import GeneralAutoencoder
 from standard_autoencoder import StandardAutoencoder
-
+from variational_autoencoder import VariationalAutoencoder
 class VariationalLaplacianAutoencoder(VariationalAutoencoder):
     """
     Implements a variational autoencoder with independent Laplacian priors. 
