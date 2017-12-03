@@ -37,7 +37,7 @@ class SparseVariationalAgeAutoencoder(VariationalAgeAutoencoder):
 
         self.initialization_function = self.glorot_init
         self.kl_weighting = 1
-        self.non_linearity = tf.nn.sigmoid
+        #self.non_linearity = tf.nn.sigmoid
         self.sigma_scaling = .1
         self.sparsity_weighting = sparsity_weighting
         
