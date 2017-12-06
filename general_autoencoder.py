@@ -17,7 +17,8 @@ class GeneralAutoencoder(DimReducer):
     def __init__(self, 
         learning_rate=0.01,
         max_epochs=300, 
-        random_seed=0):
+        random_seed=0, 
+        non_linearity='relu'):
 
         self.need_ages = False
 
@@ -39,11 +40,18 @@ class GeneralAutoencoder(DimReducer):
         self.valid_frac = .2
 
         self.batch_size = 100
+        if non_linearity == 'sigmoid':
+            self.non_linearity = tf.nn.sigmoid
+        elif non_linearity == 'relu':
+            self.non_linearity = tf.nn.relu
+        else:
+            raise Exception("not a valid nonlinear activation")
+            
         self.learning_rate = learning_rate
         self.optimization_method = tf.train.AdamOptimizer
         self.initialization_function = tf.random_normal
         self.all_losses_by_epoch = []
-
+                    
     def data_preprocessing_function(self, df):
         X, self.binary_feature_idxs, self.continuous_feature_idxs, self.feature_names = \
             partition_dataframe_into_binary_and_continuous(df)
@@ -150,6 +158,10 @@ class GeneralAutoencoder(DimReducer):
             # with tf.Session() as self.sess:
             #config = tf.ConfigProto(gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=.4))
             #self.sess = tf.Session(config=config)  
+            
+            # create a saver object so we can save the model if we want. 
+            self.saver = tf.train.Saver()
+                
             self.sess = tf.Session()  
             self.sess.run(init)
             min_valid_loss = np.nan
@@ -228,7 +240,11 @@ class GeneralAutoencoder(DimReducer):
                     else:
                         n_epochs_without_improvement = 0
                 print("Total time to run epoch: %2.3f seconds" % (time.time() - t0))
-
+    
+    def save_model(self, path_to_save_model):
+        print("Done training model; saving at path %s." % path_to_save_model)
+        self.saver.save(self.sess, save_path=path_to_save_model)
+                    
     def fill_feed_dict(self, data, ages=None, idxs=None):
         """
         Returns a dictionary that has two keys:

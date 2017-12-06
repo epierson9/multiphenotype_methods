@@ -24,7 +24,7 @@ class VariationalAutoencoder(StandardAutoencoder):
 
         self.initialization_function = self.glorot_init
         self.kl_weighting = 1
-        self.non_linearity = tf.nn.sigmoid
+        #self.non_linearity = tf.nn.sigmoid
         self.sigma_scaling = .1
 
     def init_network(self):
