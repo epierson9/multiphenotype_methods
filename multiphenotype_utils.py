@@ -48,7 +48,8 @@ def partition_dataframe_into_binary_and_continuous(df):
     print("Partitioning dataframe into binary and continuous columns")
     phenotypes_to_exclude = [
         'individual_id',
-        'age_sex___age']
+        'age_sex___age', 
+        'age_sex___self_report_female']
     feature_names = []
     binary_features = []
     continuous_features = []
@@ -119,21 +120,21 @@ def cluster_and_plot_correlation_matrix(C, column_names, how_to_sort):
     plt.show()
 
 def get_continuous_features_as_matrix(df, return_cols=False):
-    cols_to_keep = list(col for col in df.columns if (df[col].dtype == 'float64'))
-
+    X, binary_feature_idxs, continuous_feature_idxs, feature_names = partition_dataframe_into_binary_and_continuous(df)
+    X_continuous = X[:, continuous_feature_idxs]
+    continuous_feature_names = [feature_names[idx] for idx in continuous_feature_idxs]
     # Sanity checks
     phenotypes_to_exclude = [
         'individual_id',
         'age_sex___age',
         'age_sex___self_report_female']
     for phenotype in phenotypes_to_exclude: 
-        assert phenotype not in cols_to_keep
+        assert phenotype not in continuous_feature_names
 
-    reduced_df = df[cols_to_keep]
     if return_cols:
-        return reduced_df.values, cols_to_keep
+        return X_continuous, continuous_feature_names
     else:
-        return reduced_df.values
+        return X_continuous
 
 def assert_zero_mean(df):
     print(np.mean(get_continuous_features_as_matrix(df), axis=0))
