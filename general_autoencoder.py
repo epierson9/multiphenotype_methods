@@ -330,14 +330,20 @@ class GeneralAutoencoder(DimReducer):
         return df
 
 
-    def _get_projections_from_processed_data(self, data):
+    def _get_projections_from_processed_data(self, data, project_onto_mean=True):
+        """
+        if project_onto_mean=True, projects onto the mean value of Z (Z_mu). Otherwise, samples Z.  
+        """
         chunk_size = 10000 # break into chunks so GPU doesn't run out of memory BOOO. 
         start = 0
         Zs = []
         while start < len(data):
             data_i = data[start:(start + chunk_size),]
             start += chunk_size
-            Zs.append(self.sess.run(self.Z, feed_dict = {self.X:data_i}))
+            if project_onto_mean:
+                Zs.append(self.sess.run(self.Z_mu, feed_dict = {self.X:data_i}))
+            else:
+                Zs.append(self.sess.run(self.Z, feed_dict = {self.X:data_i}))
         Z = np.vstack(Zs)
         print("Shape of autoencoder projections is", Z.shape)
         return Z

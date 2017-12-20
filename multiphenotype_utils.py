@@ -38,7 +38,7 @@ def compute_correlation_matrix_with_incomplete_data(df, correlation_type):
     non_missing_data_counts = (~np.isnan(X)).sum(axis = 0)
     return C, non_missing_data_counts
 
-def partition_dataframe_into_binary_and_continuous(df):
+def partition_dataframe_into_binary_and_continuous(df, verbose=False):
     """
     Partitions a data frame into binary and continuous features. 
     This is used for the autoencoder so we apply the correct loss function. 
@@ -57,10 +57,12 @@ def partition_dataframe_into_binary_and_continuous(df):
             continue
         if set(df[c]) == set([False, True]):
             # this binarization should work even if df[c] is eg 1.0 or 1 rather than True. 
-            print("Binary column %s" % c)
+            if verbose:
+                print("Binary column %s" % c)
             binary_features.append(c)
         else:
-            print("Continuous column %s" % c)
+            if verbose:
+                print("Continuous column %s" % c)
             continuous_features.append(c)
         feature_names.append(c)
     binary_feature_idxs = [feature_names.index(a) for a in binary_features]
