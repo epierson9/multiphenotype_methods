@@ -48,8 +48,7 @@ def partition_dataframe_into_binary_and_continuous(df):
     print("Partitioning dataframe into binary and continuous columns")
     phenotypes_to_exclude = [
         'individual_id',
-        'age_sex___age', 
-        'age_sex___self_report_female']
+        'age_sex___age']
     feature_names = []
     binary_features = []
     continuous_features = []
@@ -124,11 +123,11 @@ def get_continuous_features_as_matrix(df, return_cols=False):
     X_continuous = X[:, continuous_feature_idxs]
     continuous_feature_names = [feature_names[idx] for idx in continuous_feature_idxs]
     # Sanity checks
-    phenotypes_to_exclude = [
+    sanity_check_non_continuous_phenotypes = [
         'individual_id',
         'age_sex___age',
         'age_sex___self_report_female']
-    for phenotype in phenotypes_to_exclude: 
+    for phenotype in sanity_check_non_continuous_phenotypes: 
         assert phenotype not in continuous_feature_names
 
     if return_cols:
