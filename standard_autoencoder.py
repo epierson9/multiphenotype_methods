@@ -4,6 +4,7 @@ from multiphenotype_utils import (get_continuous_features_as_matrix, add_id, rem
 import pandas as pd
 import tensorflow as tf
 from dimreducer import DimReducer
+from copy import deepcopy
 
 from general_autoencoder import GeneralAutoencoder
 
@@ -18,10 +19,10 @@ class StandardAutoencoder(GeneralAutoencoder):
 
         super(StandardAutoencoder, self).__init__(**kwargs)   
         # Does not include input_dim, but includes last hidden layer
-        self.encoder_layer_sizes = encoder_layer_sizes
+        self.encoder_layer_sizes = deepcopy(encoder_layer_sizes) # make a deepcopy so we don't modify the original data accidentally. 
         self.k = self.encoder_layer_sizes[-1]
 
-        self.decoder_layer_sizes = decoder_layer_sizes
+        self.decoder_layer_sizes = deepcopy(decoder_layer_sizes)
         
         self.non_linearity = tf.nn.relu
         self.initialization_function = self.glorot_init

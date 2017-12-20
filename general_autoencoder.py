@@ -21,7 +21,6 @@ class GeneralAutoencoder(DimReducer):
         non_linearity='relu'):
 
         self.need_ages = False
-
         # How many epochs should pass before we evaluate and print out
         # the loss on the training/validation datasets?
         self.num_epochs_before_eval = 1
@@ -146,7 +145,6 @@ class GeneralAutoencoder(DimReducer):
 
             self.X = tf.placeholder("float32", [None, len(self.feature_names)])
             self.ages = tf.placeholder("float32", None)
-
             self.init_network()
             self.Z = self.encode(self.X)
             self.Xr = self.decode(self.Z)
@@ -161,7 +159,6 @@ class GeneralAutoencoder(DimReducer):
             
             # create a saver object so we can save the model if we want. 
             self.saver = tf.train.Saver()
-                
             self.sess = tf.Session()  
             self.sess.run(init)
             min_valid_loss = np.nan
