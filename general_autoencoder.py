@@ -60,13 +60,14 @@ class GeneralAutoencoder(DimReducer):
 
         return X
         
-    def get_projections(self, df, **projection_kwargs):
+    def get_projections(self, df, project_onto_mean, **projection_kwargs):
         """
         use the fitted model to get projections for df. 
+        if project_onto_mean=True, projects onto the mean value of Z (Z_mu). Otherwise, samples Z.
         """
         print("Getting projections using method %s." % self.__class__.__name__)
         X = self.data_preprocessing_function(df)
-        Z = self._get_projections_from_processed_data(X, **projection_kwargs)
+        Z = self._get_projections_from_processed_data(X, project_onto_mean, **projection_kwargs)
         Z_df = add_id(Z, df)
         Z_df.columns = ['individual_id'] + ['z%s' % i for i in range(Z.shape[1])]
 
@@ -330,7 +331,7 @@ class GeneralAutoencoder(DimReducer):
         return df
 
 
-    def _get_projections_from_processed_data(self, data, project_onto_mean=True):
+    def _get_projections_from_processed_data(self, data, project_onto_mean):
         """
         if project_onto_mean=True, projects onto the mean value of Z (Z_mu). Otherwise, samples Z.  
         """
