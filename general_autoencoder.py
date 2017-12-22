@@ -6,6 +6,7 @@ import tensorflow as tf
 from dimreducer import DimReducer
 import time
 from scipy.stats import pearsonr
+from scipy.special import expit
 
 class GeneralAutoencoder(DimReducer):
     """
@@ -18,7 +19,8 @@ class GeneralAutoencoder(DimReducer):
         learning_rate=0.01,
         max_epochs=300, 
         random_seed=0, 
-        non_linearity='relu'):
+        non_linearity='relu', 
+        regularization_weighting_schedule={'schedule_type':'constant', 'constant':1}):
 
         self.need_ages = False
         # How many epochs should pass before we evaluate and print out
@@ -29,12 +31,17 @@ class GeneralAutoencoder(DimReducer):
         # should pass before we quit training?        
         # Roughly, 
         # max_epochs_without_improving = num_epochs_before_eval * max_evals_without_improving
-        self.max_evals_without_improving = 100
+        self.max_evals_without_improving = 500
 
         self.max_epochs = max_epochs
 
         # Set random seed
         self.random_seed = random_seed
+        
+        # save the regularization_weighting_schedule. This controls how heavily we weight the regularization loss
+        # as a function of epoch. 
+        self.regularization_weighting_schedule = regularization_weighting_schedule
+        assert regularization_weighting_schedule['schedule_type'] in ['constant', 'logistic']
 
         self.valid_frac = .2
 
@@ -127,8 +134,19 @@ class GeneralAutoencoder(DimReducer):
         self._fit_from_processed_data(train_data, valid_data, train_ages, valid_ages)
     
     def get_regularization_weighting_for_epoch(self, epoch):
-        weighting = 1
+        if self.regularization_weighting_schedule['schedule_type'] == 'constant':
+            weighting = self.regularization_weighting_schedule['constant']
+        elif self.regularization_weighting_schedule['schedule_type'] == 'logistic':
+            # scales the weighting up following a sigmoid
+            fraction_of_way_through_training = 1.0 * epoch / self.max_epochs
+            max_weight = self.regularization_weighting_schedule['max_weight']
+            slope = self.regularization_weighting_schedule['slope']
+            intercept = self.regularization_weighting_schedule['intercept']
+            weighting = max_weight * expit(fraction_of_way_through_training * slope + intercept)
+        else:
+            raise Exception("Invalid schedule type.")
         assert (weighting <= 1) and (weighting >= 0)
+        print("Regularization weighting at epoch %i is %2.3e" % (epoch, weighting))
         return weighting
         
     

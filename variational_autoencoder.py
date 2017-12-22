@@ -137,7 +137,9 @@ class VariationalAutoencoder(StandardAutoencoder):
         mean_reg_loss = 0
 
         for i in range(num_iter):              
-            combined_loss, binary_loss, continuous_loss, reg_loss = self.minibatch_mean_eval(data, ages)
+            combined_loss, binary_loss, continuous_loss, reg_loss = self.minibatch_mean_eval(data, 
+                                                                                             ages, 
+                                                                                             regularization_weighting = 1)
             mean_combined_loss += combined_loss / num_iter
             mean_binary_loss += binary_loss / num_iter
             mean_continuous_loss += continuous_loss / num_iter
