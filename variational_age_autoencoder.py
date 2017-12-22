@@ -30,7 +30,6 @@ class VariationalAgeAutoencoder(VariationalAutoencoder):
         self.need_ages = True
 
         self.initialization_function = self.glorot_init
-        self.kl_weighting = 1
         #self.non_linearity = tf.nn.sigmoid
         self.sigma_scaling = .1
 
@@ -58,8 +57,8 @@ class VariationalAgeAutoencoder(VariationalAutoencoder):
             tf.reduce_sum(
                 kl_div_loss,
                 axis=1),
-            axis=0) * self.kl_weighting
+            axis=0)
 
-        combined_loss = binary_loss + continuous_loss + kl_div_loss
+        combined_loss = self.combine_loss_components(binary_loss, continuous_loss, kl_div_loss)
 
         return combined_loss, binary_loss, continuous_loss, kl_div_loss  

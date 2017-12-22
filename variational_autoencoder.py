@@ -23,7 +23,6 @@ class VariationalAutoencoder(StandardAutoencoder):
         # self.decoder_layer_sizes = decoder_layer_sizes
 
         self.initialization_function = self.glorot_init
-        self.kl_weighting = 1
         #self.non_linearity = tf.nn.sigmoid
         self.sigma_scaling = .1
 
@@ -92,8 +91,7 @@ class VariationalAutoencoder(StandardAutoencoder):
         Z = self.Z_mu + self.Z_sigma * self.eps        
         # Z = self.Z_mu + self.eps
         return Z
-
-
+        
     def get_loss(self):
         """
         Uses self.X, self.Xr, self.Z_sigma, self.Z_mu, self.kl_weighting
@@ -107,9 +105,9 @@ class VariationalAutoencoder(StandardAutoencoder):
             tf.reduce_sum(
                 kl_div_loss,
                 axis=1),
-            axis=0) * self.kl_weighting
+            axis=0)
 
-        combined_loss = binary_loss + continuous_loss + kl_div_loss
+        combined_loss = self.combine_loss_components(binary_loss, continuous_loss, kl_div_loss)
 
         return combined_loss, binary_loss, continuous_loss, kl_div_loss  
 
@@ -131,7 +129,7 @@ class VariationalAutoencoder(StandardAutoencoder):
                len(data), 
                continuous_variance))
 
-        # https://www.statlect.com/fundamentals-of-statistics/normal-distribution-maximum-likelihood
+        
         num_iter = 1
         mean_combined_loss = 0
         mean_binary_loss = 0
@@ -145,9 +143,10 @@ class VariationalAutoencoder(StandardAutoencoder):
             mean_continuous_loss += continuous_loss / num_iter
             mean_reg_loss += reg_loss / num_iter
                     
-        
+        # https://www.statlect.com/fundamentals-of-statistics/normal-distribution-maximum-likelihood
         constant_offset_per_sample_and_feature = .5 * np.log(2 * np.pi) + .5 * np.log(continuous_variance)
         mean_continuous_loss = constant_offset_per_sample_and_feature * len(continuous_feature_idxs) + mean_continuous_loss / continuous_variance
+        # note that we compute the elbo using a weight of 1 for the regularization loss regardless of the regularization annealing. 
         mean_combined_loss = mean_binary_loss + mean_continuous_loss + mean_reg_loss
         elbo = -mean_combined_loss
         print("Average ELBO per sample = %2.3f" % elbo)

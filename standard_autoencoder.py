@@ -114,6 +114,6 @@ class StandardAutoencoder(GeneralAutoencoder):
                     axis=0))
 
         reg_loss = tf.zeros(1)
-        combined_loss = binary_loss + continuous_loss + reg_loss        
+        combined_loss = self.combine_loss_components(binary_loss, continuous_loss, reg_loss)    
 
         return combined_loss, binary_loss, continuous_loss, reg_loss
