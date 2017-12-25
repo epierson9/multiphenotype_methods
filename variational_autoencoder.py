@@ -23,12 +23,15 @@ class VariationalAutoencoder(StandardAutoencoder):
         # self.decoder_layer_sizes = decoder_layer_sizes
 
         self.initialization_function = self.glorot_init
-        #self.non_linearity = tf.nn.sigmoid
         self.sigma_scaling = .1
 
     def init_network(self):
         self.weights = {}
-        self.biases = {}        
+        self.biases = {} 
+        
+        if self.learn_continuous_variance:
+            # we exponentiate this because it has to be non-negative. 
+            self.log_continuous_variance = tf.Variable(self.initialization_function([1]))
         
         # Encoder layers.         
         for encoder_layer_idx, encoder_layer_size in enumerate(self.encoder_layer_sizes):
@@ -113,6 +116,10 @@ class VariationalAutoencoder(StandardAutoencoder):
 
 
     def compute_elbo(self, df, continuous_variance=1):
+        if self.learn_continuous_variance:
+            continuous_variance = np.exp(self.sess.run(self.log_continuous_variance)[0])
+            print("Warning: ignoring continuous variance input because we have already learned continuous variance: %2.3f" % continuous_variance)
+            
         data, binary_feature_idxs, continuous_feature_idxs, feature_names = \
             partition_dataframe_into_binary_and_continuous(df)
         ages = None
@@ -146,8 +153,13 @@ class VariationalAutoencoder(StandardAutoencoder):
             mean_reg_loss += reg_loss / num_iter
                     
         # https://www.statlect.com/fundamentals-of-statistics/normal-distribution-maximum-likelihood
-        constant_offset_per_sample_and_feature = .5 * np.log(2 * np.pi) + .5 * np.log(continuous_variance)
-        mean_continuous_loss = constant_offset_per_sample_and_feature * len(continuous_feature_idxs) + mean_continuous_loss / continuous_variance
+        if not self.learn_continuous_variance:
+            # in this case, we have to add in the variance term since the mean_continuous_loss is just a squared-error term.
+            # if we learn the variance, the continuous loss is actually the full negative Gaussian log likelihood
+            # and there is no correction needed. 
+            constant_offset_per_sample_and_feature = .5 * np.log(2 * np.pi) + .5 * np.log(continuous_variance)
+            mean_continuous_loss = constant_offset_per_sample_and_feature * len(continuous_feature_idxs) + mean_continuous_loss / continuous_variance
+            
         # note that we compute the elbo using a weight of 1 for the regularization loss regardless of the regularization annealing. 
         mean_combined_loss = mean_binary_loss + mean_continuous_loss + mean_reg_loss
         elbo = -mean_combined_loss

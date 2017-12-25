@@ -25,7 +25,7 @@ class GeneralAutoencoder(DimReducer):
         self.need_ages = False
         # How many epochs should pass before we evaluate and print out
         # the loss on the training/validation datasets?
-        self.num_epochs_before_eval = 1
+        self.num_epochs_before_eval = 10
 
         # How many rounds of evaluation without validation improvement
         # should pass before we quit training?        
@@ -45,7 +45,7 @@ class GeneralAutoencoder(DimReducer):
 
         self.valid_frac = .2
 
-        self.batch_size = 100
+        self.batch_size = 128
         if non_linearity == 'sigmoid':
             self.non_linearity = tf.nn.sigmoid
         elif non_linearity == 'relu':
@@ -235,7 +235,9 @@ class GeneralAutoencoder(DimReducer):
                                                     'valid_mean_continuous_loss':valid_mean_continuous_loss,
                                                     'valid_mean_reg_loss':valid_mean_reg_loss})
                                                      
-
+                    if self.learn_continuous_variance:
+                        continuous_variance = np.exp(self.sess.run(self.log_continuous_variance)[0])
+                        print("Continuous variance is %2.3f" % continuous_variance)
                     if 'encoder_h0_sigma' in self.weights:
                         # make sure latent state for VAE looks ok by printing out diagnostics
                         sampled_Z, mu, sigma = self.sess.run([self.Z, self.Z_mu, self.Z_sigma], feed_dict = {self.X:self.train_data})

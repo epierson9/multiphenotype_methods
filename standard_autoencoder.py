@@ -15,6 +15,7 @@ class StandardAutoencoder(GeneralAutoencoder):
     def __init__(self, 
                  encoder_layer_sizes,
                  decoder_layer_sizes,
+                 learn_continuous_variance=False,
                  **kwargs):
 
         super(StandardAutoencoder, self).__init__(**kwargs)   
@@ -23,8 +24,7 @@ class StandardAutoencoder(GeneralAutoencoder):
         self.k = self.encoder_layer_sizes[-1]
 
         self.decoder_layer_sizes = deepcopy(decoder_layer_sizes)
-        
-        self.non_linearity = tf.nn.relu
+        self.learn_continuous_variance = learn_continuous_variance
         self.initialization_function = self.glorot_init
 
 
@@ -106,12 +106,24 @@ class StandardAutoencoder(GeneralAutoencoder):
         if len(self.continuous_feature_idxs) == 0:
             continuous_loss = tf.zeros(1)
         else:
-            continuous_loss = .5 * (
-                tf.reduce_mean(
-                    tf.reduce_sum(
-                        tf.square(X_continuous - Xr_continuous), 
-                        axis=1),
-                    axis=0))
+            if self.learn_continuous_variance:
+                # if we do not assume the variance is one, the continuous loss is the negative Gaussian log likelihood
+                # with all constant terms. 
+                continuous_variance = tf.exp(self.log_continuous_variance)
+                continuous_loss = .5 * (
+                    tf.reduce_mean(
+                        tf.reduce_sum(
+                            tf.square(X_continuous - Xr_continuous) / continuous_variance, 
+                            axis=1),
+                        axis=0)) + .5 * (self.log_continuous_variance +  tf.log(2 * np.pi)) * len(self.continuous_feature_idxs)
+            else:
+                # otherwise, it is just a squared-error loss.
+                continuous_loss = .5 * (
+                    tf.reduce_mean(
+                        tf.reduce_sum(
+                            tf.square(X_continuous - Xr_continuous), 
+                            axis=1),
+                        axis=0))
 
         reg_loss = tf.zeros(1)
         combined_loss = self.combine_loss_components(binary_loss, continuous_loss, reg_loss)    
