@@ -278,7 +278,7 @@ class GeneralAutoencoder(DimReducer):
         print("Done training model; saving at path %s." % path_to_save_model)
         self.saver.save(self.sess, save_path=path_to_save_model)
                     
-    def fill_feed_dict(self, data, ages=None, idxs=None, regularization_weighting=1):
+    def fill_feed_dict(self, data, regularization_weighting, ages=None, idxs=None):
         """
         Returns a dictionary that has two keys:
             self.ages: ages[idxs]
@@ -324,7 +324,7 @@ class GeneralAutoencoder(DimReducer):
         mean_reg_loss = 0
 
         for idxs in batches:
-            feed_dict = self.fill_feed_dict(data, ages, idxs, regularization_weighting)
+            feed_dict = self.fill_feed_dict(data, regularization_weighting, ages, idxs)
             
             combined_loss, binary_loss, continuous_loss, reg_loss = self.sess.run(
                 [self.combined_loss, self.binary_loss, self.continuous_loss, self.reg_loss], 
@@ -352,7 +352,7 @@ class GeneralAutoencoder(DimReducer):
             self.batch_size)
         
         for idxs in train_batches:            
-            feed_dict = self.fill_feed_dict(data, ages, idxs, regularization_weighting)      
+            feed_dict = self.fill_feed_dict(data, regularization_weighting, ages, idxs)      
             self.sess.run([self.optimizer], feed_dict=feed_dict)
 
 

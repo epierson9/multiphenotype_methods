@@ -135,19 +135,16 @@ class VariationalAutoencoder(StandardAutoencoder):
                len(binary_feature_idxs), 
                len(data), 
                continuous_variance))
-
-        
-        num_iter = 1
-        mean_combined_loss = 0
+ 
+        num_iter = 1 # set to more than one if you want to average runs together. 
         mean_binary_loss = 0
         mean_continuous_loss = 0
         mean_reg_loss = 0
 
         for i in range(num_iter):              
-            combined_loss, binary_loss, continuous_loss, reg_loss = self.minibatch_mean_eval(data, 
-                                                                                             ages, 
-                                                                                             regularization_weighting = 1)
-            mean_combined_loss += combined_loss / num_iter
+            _, binary_loss, continuous_loss, reg_loss = self.minibatch_mean_eval(data, 
+                                                                                 ages,
+                                                                                 regularization_weighting = 1)
             mean_binary_loss += binary_loss / num_iter
             mean_continuous_loss += continuous_loss / num_iter
             mean_reg_loss += reg_loss / num_iter
@@ -160,7 +157,7 @@ class VariationalAutoencoder(StandardAutoencoder):
             constant_offset_per_sample_and_feature = .5 * np.log(2 * np.pi) + .5 * np.log(continuous_variance)
             mean_continuous_loss = constant_offset_per_sample_and_feature * len(continuous_feature_idxs) + mean_continuous_loss / continuous_variance
             
-        # note that we compute the elbo using a weight of 1 for the regularization loss regardless of the regularization annealing. 
+        # note that we compute the elbo using a weight of 1 for the regularization loss regardless of the regularization weighting. 
         mean_combined_loss = mean_binary_loss + mean_continuous_loss + mean_reg_loss
         elbo = -mean_combined_loss
         print("Average ELBO per sample = %2.3f" % elbo)
