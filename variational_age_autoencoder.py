@@ -30,9 +30,22 @@ class VariationalAgeAutoencoder(VariationalAutoencoder):
         self.need_ages = True
 
         self.initialization_function = self.glorot_init
-        #self.non_linearity = tf.nn.sigmoid
         self.sigma_scaling = .1
-
+        
+    def sample_Z(self, age, n):
+        """
+        samples Z from the age autoencoder prior. 
+        """
+        Z = np.zeros([n, self.k])
+        # For age components, need to add age shift. Other components are zero-centered. 
+        Z[:, :self.k_age] = age * self.Z_age_coef
+        
+        # add noise to all components. 
+        Z = Z + np.random.multivariate_normal(mean = np.zeros([self.k,]),
+                                              cov = np.eye(self.k),
+                                              size = n)
+        return Z
+        
     def get_loss(self):
         """
         Uses self.X, self.Xr, self.Z_sigma, self.Z_mu, self.kl_weighting

@@ -4,6 +4,7 @@ from multiphenotype_utils import (get_continuous_features_as_matrix, add_id, rem
 import pandas as pd
 import tensorflow as tf
 from dimreducer import DimReducer
+from scipy.special import expit
 
 from general_autoencoder import GeneralAutoencoder
 from standard_autoencoder import StandardAutoencoder
@@ -94,6 +95,21 @@ class VariationalAutoencoder(StandardAutoencoder):
         Z = self.Z_mu + self.Z_sigma * self.eps        
         # Z = self.Z_mu + self.eps
         return Z
+    
+    def sample_X(self, age, n):
+        """
+        samples X by first sampling Z from the autoencoder prior, then feeding it through the model. 
+        Draws n samples for people of a given age. 
+        """
+        Z = self.sample_Z(age, n)
+        Xr = self.sess.run(self.Xr, feed_dict = {self.Z:Z})
+        # for binary features, need to convert logits to 1s and 0s by sampling. 
+        Xr[:, self.binary_feature_idxs] = np.random.random(Xr[:, self.binary_feature_idxs].shape) < \
+                                                           expit(Xr[:, self.binary_feature_idxs])
+        return Xr
+    
+    def sample_Z(self, age, n):
+        raise NotImplementedError
         
     def get_loss(self):
         """
