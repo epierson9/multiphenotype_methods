@@ -64,7 +64,7 @@ class GeneralAutoencoder(DimReducer):
         print("Number of continuous features: %i; binary features %i" % (
             len(self.continuous_feature_idxs), 
             len(self.binary_feature_idxs)))
-
+        
         return X
         
     def get_projections(self, df, project_onto_mean, **projection_kwargs):
