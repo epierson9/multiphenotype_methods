@@ -85,15 +85,15 @@ class VariationalAutoencoder(StandardAutoencoder):
         # Sample from N(mu, sigma)
         self.eps = tf.random_normal(tf.shape(self.Z_mu), dtype=tf.float32, mean=0., stddev=1.0, seed=self.random_seed)
         Z = self.Z_mu + self.Z_sigma * self.eps        
-        # Z = self.Z_mu + self.eps
         return Z
     
     def sample_X(self, age, n):
         """
         samples X by first sampling Z from the autoencoder prior, then feeding it through the model. 
         Draws n samples for people of a given age. 
-        Important note: in our age autoencoder formulation, age is zero-centered (ie, we train the model with ages whose mean has been 
-        subtracted off). So you probably want the age you pass in to account for that. 
+        Important note: in our age autoencoder formulation, age is zero-centered 
+        (ie, we train the model with ages whose mean has been subtracted off). 
+        So you probably want the age you pass in to account for that. 
         """
         Z = self.sample_Z(age, n)
         Xr = self.sess.run(self.Xr, feed_dict = {self.Z:Z})

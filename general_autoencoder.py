@@ -43,8 +43,6 @@ class GeneralAutoencoder(DimReducer):
         self.regularization_weighting_schedule = regularization_weighting_schedule
         assert regularization_weighting_schedule['schedule_type'] in ['constant', 'logistic']
 
-        self.valid_frac = .2
-
         self.batch_size = 128
         if non_linearity == 'sigmoid':
             self.non_linearity = tf.nn.sigmoid

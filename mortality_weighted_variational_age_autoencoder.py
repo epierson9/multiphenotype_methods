@@ -27,15 +27,13 @@ class MortalityWeightedVariationalAgeAutoencoder(VariationalAgeAutoencoder):
                                                         **kwargs)   
         # mortality_weighting_dict should be a dictionary whose keys are features and values are weights. 
         self.mortality_weighting_dict = mortality_weighting_dict
-    
-    #def data_preprocessing_function(self, df):
-    #    super(MortalityWeightedVariationalAgeAutoencoder, self).data_preprocessing_function(df)
-    #    self.binary_feature_mortality_weights = [np.abs(self.mortality_weighting_dict[self.feature_names[i]]) for i in self.binary_feature_idxs]
-    #    self.continuous_feature_mortality_weights = [np.abs(self.mortality_weighting_dict[self.feature_names[i]]) for i in self.continuous_feature_idxs]
 
     def get_loss(self):
         """
-        
+        For each feature x_i, the loss is abs(beta_i * (Xr_i - X_i)). For binary features, Xr is \in [0, 1] 
+        (ie, it is the predicted probability of the feature being on). The betas are given by the mortality weighting dict
+        and describe each feature's contribution to mortality, but one could imagine some other way of weighting. 
+        Unfortunately, this doesn't seem to work very well for binary features: very hard to train because the logistics saturate. 
         """
         # TODO: should probably move these two lines into the data preprocessing function somehow. 
         continuous_feature_mortality_weights = np.atleast_2d([np.abs(self.mortality_weighting_dict[self.feature_names[i]]) for i in self.continuous_feature_idxs]).transpose().astype(np.float32)
