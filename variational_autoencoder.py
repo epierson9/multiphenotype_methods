@@ -14,6 +14,7 @@ class VariationalAutoencoder(StandardAutoencoder):
     Implements a standard variational autoencoder (diagonal Gaussians everywhere).
     """    
     def __init__(self, 
+                 use_batch_normalization=False,
                  **kwargs):
 
         super(VariationalAutoencoder, self).__init__(**kwargs)   
@@ -22,7 +23,7 @@ class VariationalAutoencoder(StandardAutoencoder):
         # self.k = self.encoder_layer_sizes[-1]        
 
         # self.decoder_layer_sizes = decoder_layer_sizes
-
+        self.use_batch_normalization = use_batch_normalization
         self.initialization_function = self.glorot_init
         self.sigma_scaling = .1
 
@@ -34,6 +35,9 @@ class VariationalAutoencoder(StandardAutoencoder):
             # we exponentiate this because it has to be non-negative. 
             self.log_continuous_variance = tf.Variable(self.initialization_function([1]))
         
+        if self.use_batch_normalization:
+            self.during_training = tf.placeholder(tf.bool)
+            
         # Encoder layers.         
         for encoder_layer_idx, encoder_layer_size in enumerate(self.encoder_layer_sizes):
             if encoder_layer_idx == 0:
@@ -73,8 +77,10 @@ class VariationalAutoencoder(StandardAutoencoder):
         for idx in range(num_layers):
             mu = tf.matmul(mu, self.weights['encoder_h%i' % (idx)]) \
                 + self.biases['encoder_b%i' % (idx)]
-            # No non-linearity on the last layer
+            # No non-linearity on the last layer. Also no batch normalization. 
             if idx != num_layers - 1:
+                if self.use_batch_normalization:
+                    mu = tf.layers.batch_normalization(mu, training=self.during_training)
                 mu = self.non_linearity(mu)
         self.Z_mu = mu
 
@@ -83,8 +89,10 @@ class VariationalAutoencoder(StandardAutoencoder):
         for idx in range(num_layers):
             sigma = tf.matmul(sigma, self.weights['encoder_h%i_sigma' % (idx)]) \
                 + self.biases['encoder_b%i_sigma' % (idx)]
-            # No non-linearity on the last layer
+            # No non-linearity on the last layer. Also no batch normalization. 
             if idx != num_layers - 1:
+                if self.use_batch_normalization:
+                    sigma = tf.layers.batch_normalization(sigma, training=self.during_training)
                 sigma = self.non_linearity(sigma)
         sigma = sigma * self.sigma_scaling # scale so sigma doesn't explode when we exponentiate it. 
         sigma = tf.exp(sigma)
@@ -93,7 +101,6 @@ class VariationalAutoencoder(StandardAutoencoder):
         # Sample from N(mu, sigma)
         self.eps = tf.random_normal(tf.shape(self.Z_mu), dtype=tf.float32, mean=0., stddev=1.0, seed=self.random_seed)
         Z = self.Z_mu + self.Z_sigma * self.eps        
-        # Z = self.Z_mu + self.eps
         return Z
     
     def sample_X(self, age, n):

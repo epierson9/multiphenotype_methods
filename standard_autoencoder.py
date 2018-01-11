@@ -32,6 +32,9 @@ class StandardAutoencoder(GeneralAutoencoder):
         self.weights = {}
         self.biases = {}        
         
+        if self.use_batch_normalization:
+            self.during_training = tf.placeholder(tf.bool)
+            
         # Encoder layers.         
         for encoder_layer_idx, encoder_layer_size in enumerate(self.encoder_layer_sizes):
             if encoder_layer_idx == 0:
@@ -67,8 +70,10 @@ class StandardAutoencoder(GeneralAutoencoder):
             Z = tf.matmul(Z, self.weights['encoder_h%i' % (idx)]) \
                 + self.biases['encoder_b%i' % (idx)]
             # No non-linearity on the last layer
-            # if idx != num_layers - 1:
-                # Z = self.non_linearity(Z) 
+            if idx != num_layers - 1:
+                if self.use_batch_normalization:
+                    Z = tf.layers.batch_normalization(Z, training=self.during_training)
+                Z = self.non_linearity(Z) 
         return Z
 
 
@@ -78,7 +83,9 @@ class StandardAutoencoder(GeneralAutoencoder):
         for idx in range(num_layers):
             X_with_logits = tf.matmul(X_with_logits, self.weights['decoder_h%i' % idx]) \
                 + self.biases['decoder_b%i' % idx]
-            # No non-linearity on the last layer
+            if self.use_batch_normalization:
+                X_with_logits = tf.layers.batch_normalization(X_with_logits, training=self.during_training)
+            # No non-linearity on the last layer. 
             if idx != num_layers - 1:
                 X_with_logits = self.non_linearity(X_with_logits) 
         

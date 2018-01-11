@@ -205,10 +205,10 @@ class GeneralAutoencoder(DimReducer):
                     
                     train_mean_combined_loss, train_mean_binary_loss, \
                         train_mean_continuous_loss, train_mean_reg_loss = \
-                        self.minibatch_mean_eval(self.train_data, self.train_ages, regularization_weighting_for_epoch)
+                        self.minibatch_mean_eval(self.train_data, self.train_ages, regularization_weighting_for_epoch, during_training=False)
                     valid_mean_combined_loss, valid_mean_binary_loss, \
                         valid_mean_continuous_loss, valid_mean_reg_loss = \
-                        self.minibatch_mean_eval(self.valid_data, self.valid_ages, regularization_weighting_for_epoch)    
+                        self.minibatch_mean_eval(self.valid_data, self.valid_ages, regularization_weighting_for_epoch, during_training=False)   
 
                     print('Epoch %i:\nTrain: mean loss %2.3f (%2.3f + %2.3f + %2.3f * %2.3f).  '
                         'Valid: mean loss %2.3f (%2.3f + %2.3f + %2.3f * %2.3f)' % (
@@ -240,7 +240,10 @@ class GeneralAutoencoder(DimReducer):
                         print("Continuous variance is %2.3f" % continuous_variance)
                     if 'encoder_h0_sigma' in self.weights:
                         # make sure latent state for VAE looks ok by printing out diagnostics
-                        sampled_Z, mu, sigma = self.sess.run([self.Z, self.Z_mu, self.Z_sigma], feed_dict = {self.X:self.train_data})
+                        feed_dict = {self.X:self.train_data}
+                        if self.use_batch_normalization:
+                            feed_dict[self.during_training] = False
+                        sampled_Z, mu, sigma = self.sess.run([self.Z, self.Z_mu, self.Z_sigma], feed_dict = feed_dict)
                         sampled_cov_matrix = np.cov(sampled_Z.transpose())
                         print('mean value of each Z component:')
                         print(sampled_Z.mean(axis = 0))
@@ -278,7 +281,7 @@ class GeneralAutoencoder(DimReducer):
         print("Done training model; saving at path %s." % path_to_save_model)
         self.saver.save(self.sess, save_path=path_to_save_model)
                     
-    def fill_feed_dict(self, data, regularization_weighting, ages=None, idxs=None):
+    def fill_feed_dict(self, data, regularization_weighting, ages=None, idxs=None, during_training=None):
         """
         Returns a dictionary that has two keys:
             self.ages: ages[idxs]
@@ -304,9 +307,14 @@ class GeneralAutoencoder(DimReducer):
         else:
             feed_dict = {self.X:indexed_data, 
                         self.regularization_weighting:regularization_weighting}
+        
+        # for batch normalization.
+        if self.use_batch_normalization and during_training is not None:
+            feed_dict[self.during_training] = during_training
+            
         return feed_dict
 
-    def minibatch_mean_eval(self, data, ages, regularization_weighting):
+    def minibatch_mean_eval(self, data, ages, regularization_weighting, during_training=None):
         """
         Takes in a data matrix and computes the average per-example loss on it.
         Note: 'data' in this class is always a matrix.
@@ -324,7 +332,7 @@ class GeneralAutoencoder(DimReducer):
         mean_reg_loss = 0
 
         for idxs in batches:
-            feed_dict = self.fill_feed_dict(data, regularization_weighting, ages, idxs)
+            feed_dict = self.fill_feed_dict(data, regularization_weighting, ages, idxs, during_training)
             
             combined_loss, binary_loss, continuous_loss, reg_loss = self.sess.run(
                 [self.combined_loss, self.binary_loss, self.continuous_loss, self.reg_loss], 
@@ -351,9 +359,15 @@ class GeneralAutoencoder(DimReducer):
             np.arange(data.shape[0]), 
             self.batch_size)
         
+        if self.use_batch_normalization:
+            # https://stackoverflow.com/a/43285333
+            extra_update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+        
         for idxs in train_batches:            
-            feed_dict = self.fill_feed_dict(data, regularization_weighting, ages, idxs)      
+            feed_dict = self.fill_feed_dict(data, regularization_weighting, ages, idxs, during_training=True)  
             self.sess.run([self.optimizer], feed_dict=feed_dict)
+            if self.use_batch_normalization:
+                self.sess.run([extra_update_ops], feed_dict=feed_dict)
 
 
     def reconstruct_data(self, Z_df):
@@ -362,7 +376,7 @@ class GeneralAutoencoder(DimReducer):
         Output: n x (d+1) data frame with ID column and data projected into the original (post-processed) space
         """
         Z = remove_id_and_get_mat(Z_df) 
-        X = self.sess.run(self.Xr, feed_dict={self.Z:Z})
+        X = self.sess.run(self.Xr, feed_dict={self.Z:Z, self.during_training:False})
         df = add_id(Z=X, df_with_id=Z_df)
         df.columns = ['individual_id'] + self.feature_names
         return df
@@ -379,9 +393,9 @@ class GeneralAutoencoder(DimReducer):
             data_i = data[start:(start + chunk_size),]
             start += chunk_size
             if project_onto_mean:
-                Zs.append(self.sess.run(self.Z_mu, feed_dict = {self.X:data_i}))
+                Zs.append(self.sess.run(self.Z_mu, feed_dict = {self.X:data_i, self.during_training:False}))
             else:
-                Zs.append(self.sess.run(self.Z, feed_dict = {self.X:data_i}))
+                Zs.append(self.sess.run(self.Z, feed_dict = {self.X:data_i, self.during_training:False}))
         Z = np.vstack(Zs)
         print("Shape of autoencoder projections is", Z.shape)
         return Z
