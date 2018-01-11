@@ -67,8 +67,8 @@ class StandardAutoencoder(GeneralAutoencoder):
             Z = tf.matmul(Z, self.weights['encoder_h%i' % (idx)]) \
                 + self.biases['encoder_b%i' % (idx)]
             # No non-linearity on the last layer
-            # if idx != num_layers - 1:
-                # Z = self.non_linearity(Z) 
+            if idx != num_layers - 1:
+                Z = self.non_linearity(Z) 
         return Z
 
 
