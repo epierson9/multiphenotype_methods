@@ -26,11 +26,7 @@ class MortalityWeightedVariationalAgeAutoencoder(VariationalAgeAutoencoder):
                                                         Z_age_coef = Z_age_coef, 
                                                         **kwargs)   
         # mortality_weighting_dict should be a dictionary whose keys are features and values are weights. 
-        
         self.mortality_weighting_dict = mortality_weighting_dict
-        self.k_age = k_age
-        self.Z_age_coef = Z_age_coef
-        assert self.k >= self.k_age
     
     #def data_preprocessing_function(self, df):
     #    super(MortalityWeightedVariationalAgeAutoencoder, self).data_preprocessing_function(df)

@@ -15,16 +15,8 @@ class VariationalAutoencoder(StandardAutoencoder):
     """    
     def __init__(self, 
                  **kwargs):
-
         super(VariationalAutoencoder, self).__init__(**kwargs)   
-        # Does not include input_dim, but includes last hidden layer
-        # self.encoder_layer_sizes = encoder_layer_sizes
-        # self.k = self.encoder_layer_sizes[-1]        
-
-        # self.decoder_layer_sizes = decoder_layer_sizes
-
-        self.initialization_function = self.glorot_init
-        self.sigma_scaling = .1
+        self.sigma_scaling = .1 # keeps the sigmas (ie, the std of the normal from which Z is drawn) from getting too large. 
 
     def init_network(self):
         self.weights = {}

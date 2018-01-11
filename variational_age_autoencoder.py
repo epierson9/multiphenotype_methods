@@ -19,18 +19,10 @@ class VariationalAgeAutoencoder(VariationalAutoencoder):
                  **kwargs):
 
         super(VariationalAgeAutoencoder, self).__init__(**kwargs)   
-        # Does not include input_dim, but includes last hidden layer
-        # self.encoder_layer_sizes = encoder_layer_sizes
-        # self.k = self.encoder_layer_sizes[-1]        
-
-        # self.decoder_layer_sizes = decoder_layer_sizes
         self.k_age = k_age
         self.Z_age_coef = Z_age_coef
         assert self.k >= self.k_age
         self.need_ages = True
-
-        self.initialization_function = self.glorot_init
-        self.sigma_scaling = .1
         
     def sample_Z(self, age, n):
         """

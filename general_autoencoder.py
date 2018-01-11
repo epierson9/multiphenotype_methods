@@ -55,7 +55,7 @@ class GeneralAutoencoder(DimReducer):
             
         self.learning_rate = learning_rate
         self.optimization_method = tf.train.AdamOptimizer
-        self.initialization_function = tf.random_normal
+        self.initialization_function = self.glorot_init
         self.all_losses_by_epoch = []
                     
     def data_preprocessing_function(self, df):

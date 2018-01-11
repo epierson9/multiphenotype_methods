@@ -25,8 +25,6 @@ class StandardAutoencoder(GeneralAutoencoder):
 
         self.decoder_layer_sizes = deepcopy(decoder_layer_sizes)
         self.learn_continuous_variance = learn_continuous_variance
-        self.initialization_function = self.glorot_init
-
 
     def init_network(self):
         self.weights = {}

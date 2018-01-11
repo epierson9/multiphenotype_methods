@@ -15,17 +15,7 @@ class VariationalLaplacianAutoencoder(VariationalAutoencoder):
     """    
     def __init__(self, 
                  **kwargs):
-
         super(VariationalLaplacianAutoencoder, self).__init__(**kwargs)   
-        # Does not include input_dim, but includes last hidden layer
-        # self.encoder_layer_sizes = encoder_layer_sizes
-        # self.k = self.encoder_layer_sizes[-1]        
-
-        # self.decoder_layer_sizes = decoder_layer_sizes
-
-        self.initialization_function = self.glorot_init
-        #self.non_linearity = tf.nn.sigmoid
-        self.sigma_scaling = .1
                 
     def encode(self, X):          
         num_layers = len(self.encoder_layer_sizes)
