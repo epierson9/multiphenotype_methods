@@ -100,6 +100,8 @@ class StandardAutoencoder(GeneralAutoencoder):
                         labels=X_binary),
                     axis=1),
                 axis=0)
+            # upweight binary loss by the binary loss weighting. 
+            binary_loss = self.binary_loss_weighting * binary_loss
 
         if len(self.continuous_feature_idxs) == 0:
             continuous_loss = tf.zeros(1)

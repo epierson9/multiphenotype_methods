@@ -19,6 +19,7 @@ class GeneralAutoencoder(DimReducer):
         learning_rate=0.01,
         max_epochs=300, 
         random_seed=0, 
+        binary_loss_weighting=1.0,
         non_linearity='relu', 
         regularization_weighting_schedule={'schedule_type':'constant', 'constant':1}):
 
@@ -37,6 +38,9 @@ class GeneralAutoencoder(DimReducer):
 
         # Set random seed
         self.random_seed = random_seed
+        
+        # binary loss weighting. This is used to make sure that the model doesn't just ignore binary features. 
+        self.binary_loss_weighting = binary_loss_weighting
         
         # save the regularization_weighting_schedule. This controls how heavily we weight the regularization loss
         # as a function of epoch. 
