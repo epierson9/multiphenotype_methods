@@ -102,7 +102,8 @@ class VariationalAutoencoder(StandardAutoencoder):
                                                            expit(Xr[:, self.binary_feature_idxs])
         # for continuous features, need to add noise. 
         if self.learn_continuous_variance:
-            std = np.sqrt(tf.exp(self.log_continuous_variance))
+            continuous_variance = np.exp(self.sess.run(self.log_continuous_variance)[0])
+            std = np.sqrt(continuous_variance)
         else:
             std = 1
 
