@@ -19,21 +19,25 @@ class VariationalAgeAutoencoder(VariationalAutoencoder):
                  **kwargs):
 
         super(VariationalAgeAutoencoder, self).__init__(**kwargs)   
-        # Does not include input_dim, but includes last hidden layer
-        # self.encoder_layer_sizes = encoder_layer_sizes
-        # self.k = self.encoder_layer_sizes[-1]        
-
-        # self.decoder_layer_sizes = decoder_layer_sizes
         self.k_age = k_age
         self.Z_age_coef = Z_age_coef
         assert self.k >= self.k_age
         self.need_ages = True
-
-        self.initialization_function = self.glorot_init
-        self.kl_weighting = 1
-        #self.non_linearity = tf.nn.sigmoid
-        self.sigma_scaling = .1
-
+        
+    def sample_Z(self, age, n):
+        """
+        samples Z from the age autoencoder prior. 
+        """
+        Z = np.zeros([n, self.k])
+        # For age components, need to add age shift. Other components are zero-centered. 
+        Z[:, :self.k_age] = age * self.Z_age_coef
+        
+        # add noise to all components. 
+        Z = Z + np.random.multivariate_normal(mean = np.zeros([self.k,]),
+                                              cov = np.eye(self.k),
+                                              size = n)
+        return Z
+        
     def get_loss(self):
         """
         Uses self.X, self.Xr, self.Z_sigma, self.Z_mu, self.kl_weighting
@@ -58,8 +62,8 @@ class VariationalAgeAutoencoder(VariationalAutoencoder):
             tf.reduce_sum(
                 kl_div_loss,
                 axis=1),
-            axis=0) * self.kl_weighting
+            axis=0)
 
-        combined_loss = binary_loss + continuous_loss + kl_div_loss
+        combined_loss = self.combine_loss_components(binary_loss, continuous_loss, kl_div_loss)
 
         return combined_loss, binary_loss, continuous_loss, kl_div_loss  

@@ -6,6 +6,7 @@ import tensorflow as tf
 from dimreducer import DimReducer
 import time
 from scipy.stats import pearsonr
+from scipy.special import expit
 
 class GeneralAutoencoder(DimReducer):
     """
@@ -18,27 +19,35 @@ class GeneralAutoencoder(DimReducer):
         learning_rate=0.01,
         max_epochs=300, 
         random_seed=0, 
-        non_linearity='relu'):
+        binary_loss_weighting=1.0,
+        non_linearity='relu', 
+        regularization_weighting_schedule={'schedule_type':'constant', 'constant':1}):
 
         self.need_ages = False
         # How many epochs should pass before we evaluate and print out
         # the loss on the training/validation datasets?
-        self.num_epochs_before_eval = 1
+        self.num_epochs_before_eval = 10
 
         # How many rounds of evaluation without validation improvement
         # should pass before we quit training?        
         # Roughly, 
         # max_epochs_without_improving = num_epochs_before_eval * max_evals_without_improving
-        self.max_evals_without_improving = 100
+        self.max_evals_without_improving = 500
 
         self.max_epochs = max_epochs
 
         # Set random seed
         self.random_seed = random_seed
+        
+        # binary loss weighting. This is used to make sure that the model doesn't just ignore binary features. 
+        self.binary_loss_weighting = binary_loss_weighting
+        
+        # save the regularization_weighting_schedule. This controls how heavily we weight the regularization loss
+        # as a function of epoch. 
+        self.regularization_weighting_schedule = regularization_weighting_schedule
+        assert regularization_weighting_schedule['schedule_type'] in ['constant', 'logistic']
 
-        self.valid_frac = .2
-
-        self.batch_size = 100
+        self.batch_size = 128
         if non_linearity == 'sigmoid':
             self.non_linearity = tf.nn.sigmoid
         elif non_linearity == 'relu':
@@ -48,7 +57,7 @@ class GeneralAutoencoder(DimReducer):
             
         self.learning_rate = learning_rate
         self.optimization_method = tf.train.AdamOptimizer
-        self.initialization_function = tf.random_normal
+        self.initialization_function = self.glorot_init
         self.all_losses_by_epoch = []
                     
     def data_preprocessing_function(self, df):
@@ -57,16 +66,17 @@ class GeneralAutoencoder(DimReducer):
         print("Number of continuous features: %i; binary features %i" % (
             len(self.continuous_feature_idxs), 
             len(self.binary_feature_idxs)))
-
+        
         return X
         
-    def get_projections(self, df, **projection_kwargs):
+    def get_projections(self, df, project_onto_mean, **projection_kwargs):
         """
         use the fitted model to get projections for df. 
+        if project_onto_mean=True, projects onto the mean value of Z (Z_mu). Otherwise, samples Z.
         """
         print("Getting projections using method %s." % self.__class__.__name__)
         X = self.data_preprocessing_function(df)
-        Z = self._get_projections_from_processed_data(X, **projection_kwargs)
+        Z = self._get_projections_from_processed_data(X, project_onto_mean, **projection_kwargs)
         Z_df = add_id(Z, df)
         Z_df.columns = ['individual_id'] + ['z%s' % i for i in range(Z.shape[1])]
 
@@ -104,6 +114,9 @@ class GeneralAutoencoder(DimReducer):
         ages = np.array(df['age_sex___age'].values, dtype=np.float32)
         ages -= np.mean(ages)
         return ages
+    
+    def combine_loss_components(self, binary_loss, continuous_loss, regularization_loss):
+        return binary_loss + continuous_loss + self.regularization_weighting * regularization_loss
 
     def fit(self, train_df, valid_df):
         print("Fitting model using method %s." % self.__class__.__name__)
@@ -121,6 +134,23 @@ class GeneralAutoencoder(DimReducer):
             valid_ages = self.get_ages(valid_df)
             
         self._fit_from_processed_data(train_data, valid_data, train_ages, valid_ages)
+    
+    def get_regularization_weighting_for_epoch(self, epoch):
+        if self.regularization_weighting_schedule['schedule_type'] == 'constant':
+            weighting = self.regularization_weighting_schedule['constant']
+        elif self.regularization_weighting_schedule['schedule_type'] == 'logistic':
+            # scales the weighting up following a sigmoid
+            fraction_of_way_through_training = 1.0 * epoch / self.max_epochs
+            max_weight = self.regularization_weighting_schedule['max_weight']
+            slope = self.regularization_weighting_schedule['slope']
+            intercept = self.regularization_weighting_schedule['intercept']
+            weighting = max_weight * expit(fraction_of_way_through_training * slope + intercept)
+        else:
+            raise Exception("Invalid schedule type.")
+        assert (weighting <= 1) and (weighting >= 0)
+        print("Regularization weighting at epoch %i is %2.3e" % (epoch, weighting))
+        return weighting
+        
     
     def _fit_from_processed_data(self, train_data, valid_data, train_ages=None, valid_ages=None):
         """
@@ -145,6 +175,7 @@ class GeneralAutoencoder(DimReducer):
 
             self.X = tf.placeholder("float32", [None, len(self.feature_names)])
             self.ages = tf.placeholder("float32", None)
+            self.regularization_weighting = tf.placeholder("float32")
             self.init_network()
             self.Z = self.encode(self.X)
             self.Xr = self.decode(self.Z)
@@ -169,27 +200,30 @@ class GeneralAutoencoder(DimReducer):
             for epoch in range(self.max_epochs):
                 # print('eps', self.sess.run(self.eps, feed_dict={self.X:self.train_data}))
                 t0 = time.time()
-                self._train_epoch(self.train_data, self.train_ages)
+                regularization_weighting_for_epoch = self.get_regularization_weighting_for_epoch(epoch)
+                self._train_epoch(self.train_data, self.train_ages, regularization_weighting_for_epoch)
                 
                 if (epoch % self.num_epochs_before_eval == 0) or (epoch == self.max_epochs - 1):
                     
                     train_mean_combined_loss, train_mean_binary_loss, \
                         train_mean_continuous_loss, train_mean_reg_loss = \
-                        self.minibatch_mean_eval(self.train_data, self.train_ages)
+                        self.minibatch_mean_eval(self.train_data, self.train_ages, regularization_weighting_for_epoch)
                     valid_mean_combined_loss, valid_mean_binary_loss, \
                         valid_mean_continuous_loss, valid_mean_reg_loss = \
-                        self.minibatch_mean_eval(self.valid_data, self.valid_ages)    
+                        self.minibatch_mean_eval(self.valid_data, self.valid_ages, regularization_weighting_for_epoch)    
 
-                    print('Epoch %i:\nTrain: mean loss %2.3f (%2.3f + %2.3f + %2.3f).  '
-                        'Valid: mean loss %2.3f (%2.3f + %2.3f + %2.3f)' % (
+                    print('Epoch %i:\nTrain: mean loss %2.3f (%2.3f + %2.3f + %2.3f * %2.3f).  '
+                        'Valid: mean loss %2.3f (%2.3f + %2.3f + %2.3f * %2.3f)' % (
                         epoch, 
                         train_mean_combined_loss, 
                         train_mean_binary_loss,
                         train_mean_continuous_loss,
+                        regularization_weighting_for_epoch,
                         train_mean_reg_loss,
                         valid_mean_combined_loss,
                         valid_mean_binary_loss,
                         valid_mean_continuous_loss,
+                        regularization_weighting_for_epoch,
                         valid_mean_reg_loss
                         ))
                     # log losses so that we can see if the model's training well. 
@@ -203,7 +237,9 @@ class GeneralAutoencoder(DimReducer):
                                                     'valid_mean_continuous_loss':valid_mean_continuous_loss,
                                                     'valid_mean_reg_loss':valid_mean_reg_loss})
                                                      
-
+                    if self.learn_continuous_variance:
+                        continuous_variance = np.exp(self.sess.run(self.log_continuous_variance)[0])
+                        print("Continuous variance is %2.3f" % continuous_variance)
                     if 'encoder_h0_sigma' in self.weights:
                         # make sure latent state for VAE looks ok by printing out diagnostics
                         sampled_Z, mu, sigma = self.sess.run([self.Z, self.Z_mu, self.Z_sigma], feed_dict = {self.X:self.train_data})
@@ -223,6 +259,8 @@ class GeneralAutoencoder(DimReducer):
                         
                         print('mean value of Z_mu')
                         print(mu.mean(axis = 0))
+                        print("standard deviation of Z_mu (if this is super-close to 0, that's bad)")
+                        print(mu.std(axis = 0))
                         print('mean value of Z_sigma')
                         print(sigma.mean(axis = 0))
                         
@@ -242,7 +280,7 @@ class GeneralAutoencoder(DimReducer):
         print("Done training model; saving at path %s." % path_to_save_model)
         self.saver.save(self.sess, save_path=path_to_save_model)
                     
-    def fill_feed_dict(self, data, ages=None, idxs=None):
+    def fill_feed_dict(self, data, regularization_weighting, ages=None, idxs=None):
         """
         Returns a dictionary that has two keys:
             self.ages: ages[idxs]
@@ -263,12 +301,14 @@ class GeneralAutoencoder(DimReducer):
         if self.need_ages:
             feed_dict = {
                 self.ages:indexed_ages, 
-                self.X:indexed_data}
+                self.X:indexed_data, 
+                self.regularization_weighting:regularization_weighting}
         else:
-            feed_dict = {self.X:indexed_data}
+            feed_dict = {self.X:indexed_data, 
+                        self.regularization_weighting:regularization_weighting}
         return feed_dict
 
-    def minibatch_mean_eval(self, data, ages):
+    def minibatch_mean_eval(self, data, ages, regularization_weighting):
         """
         Takes in a data matrix and computes the average per-example loss on it.
         Note: 'data' in this class is always a matrix.
@@ -286,7 +326,7 @@ class GeneralAutoencoder(DimReducer):
         mean_reg_loss = 0
 
         for idxs in batches:
-            feed_dict = self.fill_feed_dict(data, ages, idxs)
+            feed_dict = self.fill_feed_dict(data, regularization_weighting, ages, idxs)
             
             combined_loss, binary_loss, continuous_loss, reg_loss = self.sess.run(
                 [self.combined_loss, self.binary_loss, self.continuous_loss, self.reg_loss], 
@@ -299,7 +339,7 @@ class GeneralAutoencoder(DimReducer):
         return mean_combined_loss, mean_binary_loss, mean_continuous_loss, mean_reg_loss
 
 
-    def _train_epoch(self, data, ages):
+    def _train_epoch(self, data, ages, regularization_weighting):
         if self.need_ages:
             assert ages is not None
 
@@ -314,7 +354,7 @@ class GeneralAutoencoder(DimReducer):
             self.batch_size)
         
         for idxs in train_batches:            
-            feed_dict = self.fill_feed_dict(data, ages, idxs)      
+            feed_dict = self.fill_feed_dict(data, regularization_weighting, ages, idxs)      
             self.sess.run([self.optimizer], feed_dict=feed_dict)
 
 
@@ -330,14 +370,20 @@ class GeneralAutoencoder(DimReducer):
         return df
 
 
-    def _get_projections_from_processed_data(self, data):
+    def _get_projections_from_processed_data(self, data, project_onto_mean):
+        """
+        if project_onto_mean=True, projects onto the mean value of Z (Z_mu). Otherwise, samples Z.  
+        """
         chunk_size = 10000 # break into chunks so GPU doesn't run out of memory BOOO. 
         start = 0
         Zs = []
         while start < len(data):
             data_i = data[start:(start + chunk_size),]
             start += chunk_size
-            Zs.append(self.sess.run(self.Z, feed_dict = {self.X:data_i}))
+            if project_onto_mean:
+                Zs.append(self.sess.run(self.Z_mu, feed_dict = {self.X:data_i}))
+            else:
+                Zs.append(self.sess.run(self.Z, feed_dict = {self.X:data_i}))
         Z = np.vstack(Zs)
         print("Shape of autoencoder projections is", Z.shape)
         return Z

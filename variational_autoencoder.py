@@ -4,6 +4,7 @@ from multiphenotype_utils import (get_continuous_features_as_matrix, add_id, rem
 import pandas as pd
 import tensorflow as tf
 from dimreducer import DimReducer
+from scipy.special import expit
 
 from general_autoencoder import GeneralAutoencoder
 from standard_autoencoder import StandardAutoencoder
@@ -14,22 +15,16 @@ class VariationalAutoencoder(StandardAutoencoder):
     """    
     def __init__(self, 
                  **kwargs):
-
         super(VariationalAutoencoder, self).__init__(**kwargs)   
-        # Does not include input_dim, but includes last hidden layer
-        # self.encoder_layer_sizes = encoder_layer_sizes
-        # self.k = self.encoder_layer_sizes[-1]        
-
-        # self.decoder_layer_sizes = decoder_layer_sizes
-
-        self.initialization_function = self.glorot_init
-        self.kl_weighting = 1
-        #self.non_linearity = tf.nn.sigmoid
-        self.sigma_scaling = .1
+        self.sigma_scaling = .1 # keeps the sigmas (ie, the std of the normal from which Z is drawn) from getting too large. 
 
     def init_network(self):
         self.weights = {}
-        self.biases = {}        
+        self.biases = {} 
+        
+        if self.learn_continuous_variance:
+            # we exponentiate this because it has to be non-negative. 
+            self.log_continuous_variance = tf.Variable(self.initialization_function([1]))
         
         # Encoder layers.         
         for encoder_layer_idx, encoder_layer_size in enumerate(self.encoder_layer_sizes):
@@ -90,10 +85,35 @@ class VariationalAutoencoder(StandardAutoencoder):
         # Sample from N(mu, sigma)
         self.eps = tf.random_normal(tf.shape(self.Z_mu), dtype=tf.float32, mean=0., stddev=1.0, seed=self.random_seed)
         Z = self.Z_mu + self.Z_sigma * self.eps        
-        # Z = self.Z_mu + self.eps
         return Z
+    
+    def sample_X(self, age, n):
+        """
+        samples X by first sampling Z from the autoencoder prior, then feeding it through the model. 
+        Draws n samples for people of a given age. 
+        Important note: in our age autoencoder formulation, age is zero-centered 
+        (ie, we train the model with ages whose mean has been subtracted off). 
+        So you probably want the age you pass in to account for that. 
+        """
+        Z = self.sample_Z(age, n)
+        Xr = self.sess.run(self.Xr, feed_dict = {self.Z:Z})
+        # for binary features, need to convert logits to 1s and 0s by sampling. 
+        Xr[:, self.binary_feature_idxs] = np.random.random(Xr[:, self.binary_feature_idxs].shape) < \
+                                                           expit(Xr[:, self.binary_feature_idxs])
+        # for continuous features, need to add noise. 
+        if self.learn_continuous_variance:
+            std = np.sqrt(self.continuous_variance)
+        else:
+            std = 1
 
+        Xr[:, self.continuous_feature_idxs] = Xr[:, self.continuous_feature_idxs] + \
+        np.random.normal(loc=0, scale=std, size=Xr[:, self.continuous_feature_idxs].shape)
 
+        return Xr
+    
+    def sample_Z(self, age, n):
+        return np.random.multivariate_normal(mean = np.zeros([self.k,]), cov = np.eye(self.k), size = n)
+        
     def get_loss(self):
         """
         Uses self.X, self.Xr, self.Z_sigma, self.Z_mu, self.kl_weighting
@@ -107,14 +127,18 @@ class VariationalAutoencoder(StandardAutoencoder):
             tf.reduce_sum(
                 kl_div_loss,
                 axis=1),
-            axis=0) * self.kl_weighting
+            axis=0)
 
-        combined_loss = binary_loss + continuous_loss + kl_div_loss
+        combined_loss = self.combine_loss_components(binary_loss, continuous_loss, kl_div_loss)
 
         return combined_loss, binary_loss, continuous_loss, kl_div_loss  
 
 
     def compute_elbo(self, df, continuous_variance=1):
+        if self.learn_continuous_variance:
+            continuous_variance = np.exp(self.sess.run(self.log_continuous_variance)[0])
+            print("Warning: ignoring continuous variance input because we have already learned continuous variance: %2.3f" % continuous_variance)
+            
         data, binary_feature_idxs, continuous_feature_idxs, feature_names = \
             partition_dataframe_into_binary_and_continuous(df)
         ages = None
@@ -130,24 +154,29 @@ class VariationalAutoencoder(StandardAutoencoder):
                len(binary_feature_idxs), 
                len(data), 
                continuous_variance))
-
-        # https://www.statlect.com/fundamentals-of-statistics/normal-distribution-maximum-likelihood
-        num_iter = 1
-        mean_combined_loss = 0
+ 
+        num_iter = 1 # set to more than one if you want to average runs together. 
         mean_binary_loss = 0
         mean_continuous_loss = 0
         mean_reg_loss = 0
 
         for i in range(num_iter):              
-            combined_loss, binary_loss, continuous_loss, reg_loss = self.minibatch_mean_eval(data, ages)
-            mean_combined_loss += combined_loss / num_iter
+            _, binary_loss, continuous_loss, reg_loss = self.minibatch_mean_eval(data, 
+                                                                                 ages,
+                                                                                 regularization_weighting = 1)
             mean_binary_loss += binary_loss / num_iter
             mean_continuous_loss += continuous_loss / num_iter
             mean_reg_loss += reg_loss / num_iter
                     
-        
-        constant_offset_per_sample_and_feature = .5 * np.log(2 * np.pi) + .5 * np.log(continuous_variance)
-        mean_continuous_loss = constant_offset_per_sample_and_feature * len(continuous_feature_idxs) + mean_continuous_loss / continuous_variance
+        # https://www.statlect.com/fundamentals-of-statistics/normal-distribution-maximum-likelihood
+        if not self.learn_continuous_variance:
+            # in this case, we have to add in the variance term since the mean_continuous_loss is just a squared-error term.
+            # if we learn the variance, the continuous loss is actually the full negative Gaussian log likelihood
+            # and there is no correction needed. 
+            constant_offset_per_sample_and_feature = .5 * np.log(2 * np.pi) + .5 * np.log(continuous_variance)
+            mean_continuous_loss = constant_offset_per_sample_and_feature * len(continuous_feature_idxs) + mean_continuous_loss / continuous_variance
+            
+        # note that we compute the elbo using a weight of 1 for the regularization loss regardless of the regularization weighting. 
         mean_combined_loss = mean_binary_loss + mean_continuous_loss + mean_reg_loss
         elbo = -mean_combined_loss
         print("Average ELBO per sample = %2.3f" % elbo)

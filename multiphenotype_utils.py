@@ -20,25 +20,28 @@ def compute_correlation_matrix_with_incomplete_data(df, correlation_type):
     Returns the correlation matrix  and a vector of counts of non-missing data. 
     For correlation_type == covariance, identical to np.cov(df.T, ddof = 0) in case of no missing data. 
     """
-    X = pd.DataFrame(df) # make sure we are using a dataframe to do computations. 
+    X = copy.deepcopy(pd.DataFrame(df)) # make sure we are using a dataframe to do computations. 
     assert correlation_type in ['spearman', 'pearson', 'covariance']
-
+    X = X.astype(np.float64) # if we do not do this for some reason it ignores some columns in computing the correlation matrix. 
+    # which ends up being the wrong shape. 
     if correlation_type == 'covariance':
         C = X.cov() * (len(df) - 1) /  len(df) # need correction factor so it's consistent with ddof = 0. Makes little difference. 
     else:
         C = X.corr(correlation_type)
     C = np.array(C)
+    assert C.shape[0] == C.shape[1]
+    assert C.shape[0] == len(df.columns)
 
-    assert(C.shape[0] == C.shape[1])
+    
     for i in range(len(C)):
         for j in range(len(C)):
             if np.isnan(C[i][j]):
                 print("Warning: entry of covariance matrix is nan; setting to 0.")
                 C[i][j] = 0
-    non_missing_data_counts = (~np.isnan(X)).sum(axis = 0)
+    non_missing_data_counts = (~pd.isnull(X)).sum(axis = 0)
     return C, non_missing_data_counts
 
-def partition_dataframe_into_binary_and_continuous(df):
+def partition_dataframe_into_binary_and_continuous(df, verbose=False):
     """
     Partitions a data frame into binary and continuous features. 
     This is used for the autoencoder so we apply the correct loss function. 
@@ -57,10 +60,12 @@ def partition_dataframe_into_binary_and_continuous(df):
             continue
         if set(df[c]) == set([False, True]):
             # this binarization should work even if df[c] is eg 1.0 or 1 rather than True. 
-            print("Binary column %s" % c)
+            if verbose:
+                print("Binary column %s" % c)
             binary_features.append(c)
         else:
-            print("Continuous column %s" % c)
+            if verbose:
+                print("Continuous column %s" % c)
             continuous_features.append(c)
         feature_names.append(c)
     binary_feature_idxs = [feature_names.index(a) for a in binary_features]
@@ -91,11 +96,9 @@ def cluster_and_plot_correlation_matrix(C, column_names, how_to_sort):
         C[i, i] = 1 # make it exactly one so hierarchical clustering doesn't complain. 
     C[C > 1] = 1
     C[C < -1] = -1
-
     assert how_to_sort in ['alphabetically', 'hierarchical']
     assert(len(C) == len(column_names))
-    plt.set_cmap('bwr')
-    plt.figure(figsize = [15, 15])
+    
     if how_to_sort == 'hierarchical':
         y = squareform(1 - np.abs(C))
         Z = linkage(y, method = 'average')
@@ -107,10 +110,17 @@ def cluster_and_plot_correlation_matrix(C, column_names, how_to_sort):
     
     C = C[:, reordered_idxs]
     C = C[reordered_idxs, :]
-    plt.yticks(range(len(column_names)), np.array(column_names)[reordered_idxs])
-    plt.xticks(range(len(column_names)), np.array(column_names)[reordered_idxs], rotation = 90)
+    plt.figure(figsize=[50, 50])
+    plt.set_cmap('bwr')
     plt.imshow(C, vmin = -1, vmax = 1)
-    
+    reordered_colnames = np.array(column_names)[reordered_idxs]
+    plt.yticks(range(len(column_names)), 
+               reordered_colnames, 
+               fontsize = 8)
+    plt.xticks(range(len(column_names)), 
+               reordered_colnames,
+               rotation = 90, 
+               fontsize = 8)
     plt.colorbar()
     for i in range(len(C)):
         for j in range(len(C)):

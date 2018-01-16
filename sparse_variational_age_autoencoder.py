@@ -76,6 +76,6 @@ class SparseVariationalAgeAutoencoder(VariationalAgeAutoencoder):
                 sparsity_loss += tf.reduce_sum(tf.abs(self.weights[layer_name]))
         sparsity_loss = sparsity_loss * self.sparsity_weighting
 
-        combined_loss = binary_loss + continuous_loss + kl_div_loss + sparsity_loss
+        combined_loss = self.combine_loss_components(binary_loss, continuous_loss, kl_div_loss + sparsity_loss)
 
         return combined_loss, binary_loss, continuous_loss, kl_div_loss  

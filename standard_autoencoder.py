@@ -15,6 +15,7 @@ class StandardAutoencoder(GeneralAutoencoder):
     def __init__(self, 
                  encoder_layer_sizes,
                  decoder_layer_sizes,
+                 learn_continuous_variance=False,
                  **kwargs):
 
         super(StandardAutoencoder, self).__init__(**kwargs)   
@@ -23,10 +24,7 @@ class StandardAutoencoder(GeneralAutoencoder):
         self.k = self.encoder_layer_sizes[-1]
 
         self.decoder_layer_sizes = deepcopy(decoder_layer_sizes)
-        
-        self.non_linearity = tf.nn.relu
-        self.initialization_function = self.glorot_init
-
+        self.learn_continuous_variance = learn_continuous_variance
 
     def init_network(self):
         self.weights = {}
@@ -67,8 +65,8 @@ class StandardAutoencoder(GeneralAutoencoder):
             Z = tf.matmul(Z, self.weights['encoder_h%i' % (idx)]) \
                 + self.biases['encoder_b%i' % (idx)]
             # No non-linearity on the last layer
-            # if idx != num_layers - 1:
-                # Z = self.non_linearity(Z) 
+            if idx != num_layers - 1:
+                Z = self.non_linearity(Z) 
         return Z
 
 
@@ -102,18 +100,32 @@ class StandardAutoencoder(GeneralAutoencoder):
                         labels=X_binary),
                     axis=1),
                 axis=0)
+            # upweight binary loss by the binary loss weighting. 
+            binary_loss = self.binary_loss_weighting * binary_loss
 
         if len(self.continuous_feature_idxs) == 0:
             continuous_loss = tf.zeros(1)
         else:
-            continuous_loss = .5 * (
-                tf.reduce_mean(
-                    tf.reduce_sum(
-                        tf.square(X_continuous - Xr_continuous), 
-                        axis=1),
-                    axis=0))
+            if self.learn_continuous_variance:
+                # if we do not assume the variance is one, the continuous loss is the negative Gaussian log likelihood
+                # with all constant terms. 
+                continuous_variance = tf.exp(self.log_continuous_variance)
+                continuous_loss = .5 * (
+                    tf.reduce_mean(
+                        tf.reduce_sum(
+                            tf.square(X_continuous - Xr_continuous) / continuous_variance, 
+                            axis=1),
+                        axis=0)) + .5 * (self.log_continuous_variance +  tf.log(2 * np.pi)) * len(self.continuous_feature_idxs)
+            else:
+                # otherwise, it is just a squared-error loss.
+                continuous_loss = .5 * (
+                    tf.reduce_mean(
+                        tf.reduce_sum(
+                            tf.square(X_continuous - Xr_continuous), 
+                            axis=1),
+                        axis=0))
 
         reg_loss = tf.zeros(1)
-        combined_loss = binary_loss + continuous_loss + reg_loss        
+        combined_loss = self.combine_loss_components(binary_loss, continuous_loss, reg_loss)    
 
         return combined_loss, binary_loss, continuous_loss, reg_loss
