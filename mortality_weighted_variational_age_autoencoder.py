@@ -51,6 +51,8 @@ class MortalityWeightedVariationalAgeAutoencoder(VariationalAgeAutoencoder):
         # now compute losses: we weight the errors by how much they affect the mortality prediction. 
         continuous_loss = tf.reduce_mean(tf.matmul(tf.abs(X_continuous - Xr_continuous), continuous_feature_mortality_weights))
         binary_loss = tf.reduce_mean(tf.matmul(tf.abs(X_binary - Xr_binary_probabilities), binary_feature_mortality_weights))
+
+        binary_loss = binary_loss * self.binary_loss_weighting
    
         # KL div loss comes from the variational age autoencoder. 
         _, _, _, kl_div_loss = super(MortalityWeightedVariationalAgeAutoencoder, self).get_loss()
