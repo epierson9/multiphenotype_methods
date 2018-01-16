@@ -36,8 +36,10 @@ class MortalityWeightedVariationalAgeAutoencoder(VariationalAgeAutoencoder):
         Unfortunately, this doesn't seem to work very well for binary features: very hard to train because the logistics saturate. 
         """
         # TODO: should probably move these two lines into the data preprocessing function somehow. 
-        continuous_feature_mortality_weights = np.atleast_2d([np.abs(self.mortality_weighting_dict[self.feature_names[i]]) for i in self.continuous_feature_idxs]).transpose().astype(np.float32)
-        binary_feature_mortality_weights = np.atleast_2d([np.abs(self.mortality_weighting_dict[self.feature_names[i]]) for i in self.binary_feature_idxs]).transpose().astype(np.float32)
+        continuous_feature_mortality_weights = np.atleast_2d( \
+            [np.abs(self.mortality_weighting_dict[self.feature_names[i]]) for i in self.continuous_feature_idxs]).transpose().astype(np.float32)
+        binary_feature_mortality_weights = np.atleast_2d( \
+            [np.abs(self.mortality_weighting_dict[self.feature_names[i]]) for i in self.binary_feature_idxs]).transpose().astype(np.float32)
         
         # partition reconstruction into binary and continuous features as usual. 
         X_binary, X_continuous = self.split_into_binary_and_continuous(self.X)

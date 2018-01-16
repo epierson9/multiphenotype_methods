@@ -100,10 +100,19 @@ class VariationalAutoencoder(StandardAutoencoder):
         # for binary features, need to convert logits to 1s and 0s by sampling. 
         Xr[:, self.binary_feature_idxs] = np.random.random(Xr[:, self.binary_feature_idxs].shape) < \
                                                            expit(Xr[:, self.binary_feature_idxs])
+        # for continuous features, need to add noise. 
+        if self.learn_continuous_variance:
+            std = np.sqrt(self.continuous_variance)
+        else:
+            std = 1
+
+        Xr[:, self.continuous_feature_idxs] = Xr[:, self.continuous_feature_idxs] + \
+        np.random.normal(loc=0, scale=std, size=Xr[:, self.continuous_feature_idxs].shape)
+
         return Xr
     
     def sample_Z(self, age, n):
-        raise NotImplementedError
+        return np.random.multivariate_normal(mean = np.zeros([self.k,]), cov = np.eye(self.k), size = n)
         
     def get_loss(self):
         """
