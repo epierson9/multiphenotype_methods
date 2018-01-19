@@ -87,15 +87,10 @@ class VariationalAutoencoder(StandardAutoencoder):
         Z = self.Z_mu + self.Z_sigma * self.eps        
         return Z
     
-    def sample_X(self, age, n):
+    def sample_X_given_Z(self, Z):
         """
-        samples X by first sampling Z from the autoencoder prior, then feeding it through the model. 
-        Draws n samples for people of a given age. 
-        Important note: in our age autoencoder formulation, age is zero-centered 
-        (ie, we train the model with ages whose mean has been subtracted off). 
-        So you probably want the age you pass in to account for that. 
+        given a Z, samples X. Adds noise for both binary and continuous features following the autoencoder model. 
         """
-        Z = self.sample_Z(age, n)
         Xr = self.sess.run(self.Xr, feed_dict = {self.Z:Z})
         # for binary features, need to convert logits to 1s and 0s by sampling. 
         Xr[:, self.binary_feature_idxs] = np.random.random(Xr[:, self.binary_feature_idxs].shape) < \
@@ -109,8 +104,18 @@ class VariationalAutoencoder(StandardAutoencoder):
 
         Xr[:, self.continuous_feature_idxs] = Xr[:, self.continuous_feature_idxs] + \
         np.random.normal(loc=0, scale=std, size=Xr[:, self.continuous_feature_idxs].shape)
-
         return Xr
+    
+    def sample_X(self, age, n):
+        """
+        samples X by first sampling Z from the autoencoder prior, then feeding it through the model. 
+        Draws n samples for people of a given age. 
+        Important note: in our age autoencoder formulation, age is zero-centered 
+        (ie, we train the model with ages whose mean has been subtracted off). 
+        So you probably want the age you pass in to account for that. 
+        """
+        Z = self.sample_Z(age, n)
+        return sample_X_given_Z(Z)
     
     def sample_Z(self, age, n):
         return np.random.multivariate_normal(mean = np.zeros([self.k,]), cov = np.eye(self.k), size = n)
