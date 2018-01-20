@@ -116,11 +116,11 @@ def cluster_and_plot_correlation_matrix(C, column_names, how_to_sort):
     reordered_colnames = np.array(column_names)[reordered_idxs]
     plt.yticks(range(len(column_names)), 
                reordered_colnames, 
-               fontsize = 8)
+               fontsize = 24)
     plt.xticks(range(len(column_names)), 
                reordered_colnames,
                rotation = 90, 
-               fontsize = 8)
+               fontsize = 24)
     plt.colorbar()
     for i in range(len(C)):
         for j in range(len(C)):
