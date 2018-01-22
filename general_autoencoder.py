@@ -370,10 +370,13 @@ class GeneralAutoencoder(DimReducer):
         return df
 
 
-    def _get_projections_from_processed_data(self, data, project_onto_mean):
+    def _get_projections_from_processed_data(self, data, project_onto_mean, rotation_matrix=None):
         """
         if project_onto_mean=True, projects onto the mean value of Z (Z_mu). Otherwise, samples Z.  
+        If rotation_matrix is passed in, rotates.
         """
+        if rotation_matrix is not None:
+            print("Rotating Z by the rotation matrix!")
         chunk_size = 10000 # break into chunks so GPU doesn't run out of memory BOOO. 
         start = 0
         Zs = []
@@ -381,9 +384,12 @@ class GeneralAutoencoder(DimReducer):
             data_i = data[start:(start + chunk_size),]
             start += chunk_size
             if project_onto_mean:
-                Zs.append(self.sess.run(self.Z_mu, feed_dict = {self.X:data_i}))
+                Z = self.sess.run(self.Z_mu, feed_dict = {self.X:data_i})
             else:
-                Zs.append(self.sess.run(self.Z, feed_dict = {self.X:data_i}))
+                Z = self.sess.run(self.Z, feed_dict = {self.X:data_i})
+            if rotation_matrix is not None:
+                Z = np.dot(Z, rotation_matrix)
+            Zs.append(Z)    
         Z = np.vstack(Zs)
         print("Shape of autoencoder projections is", Z.shape)
         return Z
