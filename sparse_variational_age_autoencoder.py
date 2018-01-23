@@ -14,7 +14,6 @@ from variational_age_autoencoder import VariationalAgeAutoencoder
 class SparseVariationalAgeAutoencoder(VariationalAgeAutoencoder):
     """
     Implements a variational autoencoder with an age prior and sparsity.
-    The loss function for this only really makes sense when we have a single decoder layer, so we assert that. 
     """    
     def __init__(self,
                  k_age,

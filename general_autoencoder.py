@@ -21,6 +21,7 @@ class GeneralAutoencoder(DimReducer):
         random_seed=0, 
         binary_loss_weighting=1.0,
         non_linearity='relu', 
+        batch_size=128,
         regularization_weighting_schedule={'schedule_type':'constant', 'constant':1}):
 
         self.need_ages = False
@@ -47,7 +48,7 @@ class GeneralAutoencoder(DimReducer):
         self.regularization_weighting_schedule = regularization_weighting_schedule
         assert regularization_weighting_schedule['schedule_type'] in ['constant', 'logistic']
 
-        self.batch_size = 128
+        self.batch_size = batch_size
         if non_linearity == 'sigmoid':
             self.non_linearity = tf.nn.sigmoid
         elif non_linearity == 'relu':
