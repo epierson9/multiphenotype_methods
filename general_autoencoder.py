@@ -5,8 +5,9 @@ import pandas as pd
 import tensorflow as tf
 from dimreducer import DimReducer
 import time
-from scipy.stats import pearsonr
+from scipy.stats import pearsonr, linregress
 from scipy.special import expit
+import copy
 
 class GeneralAutoencoder(DimReducer):
     """
@@ -151,7 +152,29 @@ class GeneralAutoencoder(DimReducer):
         assert (weighting <= 1) and (weighting >= 0)
         print("Regularization weighting at epoch %i is %2.3e" % (epoch, weighting))
         return weighting
-        
+    
+    def model_features_as_function_of_age(self, data, ages):
+        """
+        given a processed data matrix, computes the age slope and intercept for each feature. 
+        Returns a dictionary where feature names match to age slopes and intercepts. 
+        """
+        if len(ages) < 10000:
+            raise Exception("You are trying to demean data using very few datapoints. This seems bad.")
+        assert len(data) == len(ages)
+        features_to_age_slope_and_intercept = {}
+        for i, feature in enumerate(self.feature_names):
+            slope, intercept, _, _, _ = linregress(ages, data[:, i])
+            features_to_age_slope_and_intercept[feature] = {'slope':slope, 'intercept':intercept}
+            assert np.abs(pearsonr(data[:, i] - slope * ages - intercept, ages)[0]) < 1e-6
+        return features_to_age_slope_and_intercept
+    
+    def decorrelate_data_with_age(self, data, ages):
+        decorrelated_data = copy.deepcopy(data)
+        for i, feature in enumerate(self.feature_names):
+            slope = self.age_adjusted_models[feature]['slope']
+            intercept = self.age_adjusted_models[feature]['intercept']
+            decorrelated_data[:, i] = decorrelated_data[:, i] - slope * ages - intercept
+        return decorrelated_data
     
     def _fit_from_processed_data(self, train_data, valid_data, train_ages=None, valid_ages=None):
         """
@@ -160,12 +183,21 @@ class GeneralAutoencoder(DimReducer):
         if self.need_ages:
             assert train_ages is not None
             assert valid_ages is not None
+            # Compute age-adjusted data. 
+            self.age_adjusted_models = self.model_features_as_function_of_age(train_data, train_ages)
+            self.age_adjusted_train_data = self.decorrelate_data_with_age(train_data, train_ages)
+            self.age_adjusted_valid_data = self.decorrelate_data_with_age(valid_data, valid_ages)
+        else:
+            self.age_adjusted_models = None
+            self.age_adjusted_train_data = None
+            self.age_adjusted_valid_data = None
+            
         
         self.train_data = train_data
         self.valid_data = valid_data
         self.train_ages = train_ages
         self.valid_ages = valid_ages
-
+        
         print("Train size %i; valid size %i" % (
             self.train_data.shape[0], self.valid_data.shape[0]))
                 
@@ -175,6 +207,7 @@ class GeneralAutoencoder(DimReducer):
             np.random.seed(self.random_seed)
 
             self.X = tf.placeholder("float32", [None, len(self.feature_names)])
+            self.age_adjusted_X = tf.placeholder("float32", [None, len(self.feature_names)])
             self.ages = tf.placeholder("float32", None)
             self.regularization_weighting = tf.placeholder("float32")
             self.init_network()
@@ -199,19 +232,27 @@ class GeneralAutoencoder(DimReducer):
             params = self.sess.run(self.weights)
             print('Norm of params: %s' % np.linalg.norm(params['encoder_h0']))
             for epoch in range(self.max_epochs):
-                # print('eps', self.sess.run(self.eps, feed_dict={self.X:self.train_data}))
                 t0 = time.time()
                 regularization_weighting_for_epoch = self.get_regularization_weighting_for_epoch(epoch)
-                self._train_epoch(self.train_data, self.train_ages, regularization_weighting_for_epoch)
+                self._train_epoch(self.train_data, 
+                                  self.train_ages, 
+                                  regularization_weighting_for_epoch, 
+                                  self.age_adjusted_train_data)
                 
                 if (epoch % self.num_epochs_before_eval == 0) or (epoch == self.max_epochs - 1):
                     
                     train_mean_combined_loss, train_mean_binary_loss, \
                         train_mean_continuous_loss, train_mean_reg_loss = \
-                        self.minibatch_mean_eval(self.train_data, self.train_ages, regularization_weighting_for_epoch)
+                        self.minibatch_mean_eval(self.train_data, 
+                                                 self.train_ages, 
+                                                 self.age_adjusted_train_data,
+                                                 regularization_weighting_for_epoch)
                     valid_mean_combined_loss, valid_mean_binary_loss, \
                         valid_mean_continuous_loss, valid_mean_reg_loss = \
-                        self.minibatch_mean_eval(self.valid_data, self.valid_ages, regularization_weighting_for_epoch)    
+                        self.minibatch_mean_eval(self.valid_data, 
+                                                 self.valid_ages, 
+                                                 self.age_adjusted_valid_data,
+                                                 regularization_weighting_for_epoch)    
 
                     print('Epoch %i:\nTrain: mean loss %2.3f (%2.3f + %2.3f + %2.3f * %2.3f).  '
                         'Valid: mean loss %2.3f (%2.3f + %2.3f + %2.3f * %2.3f)' % (
@@ -281,7 +322,7 @@ class GeneralAutoencoder(DimReducer):
         print("Done training model; saving at path %s." % path_to_save_model)
         self.saver.save(self.sess, save_path=path_to_save_model)
                     
-    def fill_feed_dict(self, data, regularization_weighting, ages=None, idxs=None):
+    def fill_feed_dict(self, data, regularization_weighting, ages=None, idxs=None, age_adjusted_data=None):
         """
         Returns a dictionary that has two keys:
             self.ages: ages[idxs]
@@ -293,23 +334,30 @@ class GeneralAutoencoder(DimReducer):
                 indexed_ages = ages[idxs]
             else:
                 indexed_ages = ages
+                
+            if age_adjusted_data is not None:
+                indexed_age_adjusted_data = age_adjusted_data[idxs, :]
+            else:
+                indexed_age_adjusted_data = age_adjusted_data
             indexed_data = data[idxs, :]
         else:
             indexed_ages = ages
             indexed_data = data
+            indexed_age_adjusted_data = age_adjusted_data
 
        
         if self.need_ages:
             feed_dict = {
                 self.ages:indexed_ages, 
                 self.X:indexed_data, 
+                self.age_adjusted_X:indexed_age_adjusted_data,
                 self.regularization_weighting:regularization_weighting}
         else:
             feed_dict = {self.X:indexed_data, 
                         self.regularization_weighting:regularization_weighting}
         return feed_dict
 
-    def minibatch_mean_eval(self, data, ages, regularization_weighting):
+    def minibatch_mean_eval(self, data, ages, age_adjusted_data, regularization_weighting):
         """
         Takes in a data matrix and computes the average per-example loss on it.
         Note: 'data' in this class is always a matrix.
@@ -327,7 +375,11 @@ class GeneralAutoencoder(DimReducer):
         mean_reg_loss = 0
 
         for idxs in batches:
-            feed_dict = self.fill_feed_dict(data, regularization_weighting, ages, idxs)
+            feed_dict = self.fill_feed_dict(data, 
+                                            regularization_weighting=regularization_weighting, 
+                                            ages=ages, 
+                                            idxs=idxs, 
+                                            age_adjusted_data=age_adjusted_data)
             
             combined_loss, binary_loss, continuous_loss, reg_loss = self.sess.run(
                 [self.combined_loss, self.binary_loss, self.continuous_loss, self.reg_loss], 
@@ -340,7 +392,7 @@ class GeneralAutoencoder(DimReducer):
         return mean_combined_loss, mean_binary_loss, mean_continuous_loss, mean_reg_loss
 
 
-    def _train_epoch(self, data, ages, regularization_weighting):
+    def _train_epoch(self, data, ages, regularization_weighting, age_adjusted_data):
         if self.need_ages:
             assert ages is not None
 
@@ -355,7 +407,11 @@ class GeneralAutoencoder(DimReducer):
             self.batch_size)
         
         for idxs in train_batches:            
-            feed_dict = self.fill_feed_dict(data, regularization_weighting, ages, idxs)      
+            feed_dict = self.fill_feed_dict(data, 
+                                            regularization_weighting=regularization_weighting, 
+                                            ages=ages, 
+                                            idxs=idxs, 
+                                            age_adjusted_data=age_adjusted_data)
             self.sess.run([self.optimizer], feed_dict=feed_dict)
 
 

@@ -46,34 +46,35 @@ class SparseCorrelationVariationalAgeAutoencoder(VariationalAgeAutoencoder):
         pearsonr = tf.reduce_mean((v1 - mu_1) * (v2 - mu_2)) / (sigma_1 * sigma_2)
         return pearsonr
     
+    def compute_correlation_sparsity_loss(self, Z, X):
+        # this is a vectorized version which should be faster but hopefully equivalent. 
+        mu_X, variance_X = tf.nn.moments(X, axes=[0])
+        mu_Z, variance_Z = tf.nn.moments(Z, axes=[0])
+        std_X = tf.reshape(tf.sqrt(variance_X), shape=[len(self.feature_names), 1])
+        std_Z = tf.reshape(tf.sqrt(variance_Z), shape=[1, tf.shape(variance_Z)[0]])
+        
+        # TODO: the zero-meaning seems to work, but it might be good to tf.reshape or tf.tile mu_X and mu_Z just to be safe. 
+        zero_mean_X = X - mu_X # this should subtract off the mean of each column of X. 
+        zero_mean_Z = Z - mu_Z # similarly for Z. 
+        n_samples = tf.cast(tf.shape(X)[0], tf.float32)
+        expected_product = tf.matmul(tf.transpose(zero_mean_X), zero_mean_Z) / n_samples
+        product_of_stds = tf.matmul(std_X, std_Z)
+        pearsonr_matrix = expected_product / product_of_stds
+        clipped_pearsonr_matrix = tf.clip_by_value(tf.abs(pearsonr_matrix), self.min_corr_value, np.inf)
+        sparsity_loss = tf.reduce_sum(clipped_pearsonr_matrix)
+        return sparsity_loss
+    
     def get_loss(self):
         """
         Adds a correlation sparsity loss to the regularization term. 
         """
         _, binary_loss, continuous_loss, kl_div_loss = super(SparseCorrelationVariationalAgeAutoencoder, self).get_loss()   
         
-        # slow way: loops over each column of X and Z. 
-        # sparsity_loss = 0
-        #for i in range(self.Z.shape[1]):
-        #    for j in range(self.X.shape[1]):
-        #        sparsity_loss += tf.abs(self.compute_pearson_correlation(self.Z[:, i], self.X[:, j]))
-        
-        # this is a vectorized version which should be faster but hopefully equivalent. 
-        mu_X, variance_X = tf.nn.moments(self.X, axes=[0])
-        mu_Z, variance_Z = tf.nn.moments(self.Z, axes=[0])
-        std_X = tf.reshape(tf.sqrt(variance_X), shape=[len(self.feature_names), 1])
-        std_Z = tf.reshape(tf.sqrt(variance_Z), shape=[1, self.k])
-        
-        # TODO: the zero-meaning seems to work, but it might be good to tf.reshape or tf.tile mu_X and mu_Z just to be safe. 
-        zero_mean_X = self.X - mu_X # this should subtract off the mean of each column of X. 
-        zero_mean_Z = self.Z - mu_Z # similarly for Z. 
-        n_samples = tf.cast(tf.shape(self.X)[0], tf.float32)
-        expected_product = tf.matmul(tf.transpose(zero_mean_X), zero_mean_Z) / n_samples
-        product_of_stds = tf.matmul(std_X, std_Z)
-        pearsonr_matrix = expected_product / product_of_stds
-        clipped_pearsonr_matrix = tf.clip_by_value(tf.abs(pearsonr_matrix), self.min_corr_value, np.inf)
-        sparsity_loss = tf.reduce_sum(clipped_pearsonr_matrix)
-        
+        # for non-age states, use correlation with X to compute sparsity loss. 
+        # for age states, use correlation with age_adjusted_X. 
+        sparsity_loss = self.compute_correlation_sparsity_loss(self.Z[:, self.k_age:], self.X)
+        if self.k_age > 0:
+            sparsity_loss += self.compute_correlation_sparsity_loss(self.Z[:, :self.k_age], self.age_adjusted_X)
         
         sparsity_loss = sparsity_loss * self.sparsity_weighting
         

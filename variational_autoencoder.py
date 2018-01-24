@@ -150,6 +150,9 @@ class VariationalAutoencoder(StandardAutoencoder):
         ages = None
         if self.need_ages:
             ages = self.get_ages(df)
+            age_adjusted_data = self.decorrelate_data_with_age(data, ages)
+        
+        
         assert np.all(binary_feature_idxs == self.binary_feature_idxs)
         assert np.all(continuous_feature_idxs == self.continuous_feature_idxs)
         assert np.all(feature_names == self.feature_names)
@@ -169,7 +172,9 @@ class VariationalAutoencoder(StandardAutoencoder):
         for i in range(num_iter):              
             _, binary_loss, continuous_loss, reg_loss = self.minibatch_mean_eval(data, 
                                                                                  ages,
+                                                                                 age_adjusted_data=age_adjusted_data,
                                                                                  regularization_weighting = 1)
+                                                                                 
             mean_binary_loss += binary_loss / num_iter
             mean_continuous_loss += continuous_loss / num_iter
             mean_reg_loss += reg_loss / num_iter
