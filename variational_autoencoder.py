@@ -148,10 +148,10 @@ class VariationalAutoencoder(StandardAutoencoder):
         data, binary_feature_idxs, continuous_feature_idxs, feature_names = \
             partition_dataframe_into_binary_and_continuous(df)
         ages = None
+        age_adjusted_data = None
         if self.need_ages:
             ages = self.get_ages(df)
-            age_adjusted_data = self.decorrelate_data_with_age(data, ages)
-        
+            age_adjusted_data = self.decorrelate_data_with_age(data, ages)            
         
         assert np.all(binary_feature_idxs == self.binary_feature_idxs)
         assert np.all(continuous_feature_idxs == self.continuous_feature_idxs)
