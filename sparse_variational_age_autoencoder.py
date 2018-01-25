@@ -46,18 +46,19 @@ class SparseVariationalAgeAutoencoder(VariationalAgeAutoencoder):
         """
         _, binary_loss, continuous_loss, kl_div_loss = super(SparseVariationalAgeAutoencoder, self).get_loss()   
         
-        sparsity_loss = 0
-        layers_examined = 0
-        for layer_name in self.weights:
-            if 'decoder' in layer_name:
-                if layers_examined == 0:
-                    combined_weight_matrix = tf.abs(self.weights[layer_name])
-                else:
-                    combined_weight_matrix = tf.matmul(combined_weight_matrix, tf.abs(self.weights[layer_name]))
-                layers_examined += 1
-        sparsity_loss += tf.reduce_sum(tf.abs(combined_weight_matrix))
-        sparsity_loss = sparsity_loss * self.sparsity_weighting
+        decoder_layer_number = 0
+        layer_name = 'decoder_h%i' % decoder_layer_number
+        while layer_name in self.weights:
+            print('adding sparsity loss to decoder layer ' + layer_name)
+            if decoder_layer_number == 0:
+                combined_weight_matrix = tf.abs(self.weights[layer_name])
+            else:
+                combined_weight_matrix = tf.matmul(combined_weight_matrix, tf.abs(self.weights[layer_name]))
+            decoder_layer_number += 1
+            layer_name = 'decoder_h%i' % decoder_layer_number
+            
+        sparsity_loss = tf.reduce_sum(tf.abs(combined_weight_matrix))
+        regularization_loss = kl_div_loss + sparsity_loss * self.sparsity_weighting
+        combined_loss = self.combine_loss_components(binary_loss, continuous_loss, regularization_loss)
 
-        combined_loss = self.combine_loss_components(binary_loss, continuous_loss, kl_div_loss + sparsity_loss)
-
-        return combined_loss, binary_loss, continuous_loss, kl_div_loss  
+        return combined_loss, binary_loss, continuous_loss, regularization_loss  

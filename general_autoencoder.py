@@ -159,7 +159,7 @@ class GeneralAutoencoder(DimReducer):
         Returns a dictionary where feature names match to age slopes and intercepts. 
         """
         if len(ages) < 10000:
-            raise Exception("You are trying to demean data using very few datapoints. This seems bad.")
+            raise Exception("You are trying to compute age trends on data using very few datapoints. This seems bad.")
         assert len(data) == len(ages)
         features_to_age_slope_and_intercept = {}
         for i, feature in enumerate(self.feature_names):
@@ -169,6 +169,11 @@ class GeneralAutoencoder(DimReducer):
         return features_to_age_slope_and_intercept
     
     def decorrelate_data_with_age(self, data, ages):
+        """
+        given a processed data matrix, uses the previously fitted age model to remove age trends from each feature.
+        Age trends are modeled linearly. 
+        This relies on having previously fitted age_adjusted_models (ie, self.age_adjusted_models should not be None).
+        """
         decorrelated_data = copy.deepcopy(data)
         for i, feature in enumerate(self.feature_names):
             slope = self.age_adjusted_models[feature]['slope']
@@ -183,7 +188,7 @@ class GeneralAutoencoder(DimReducer):
         if self.need_ages:
             assert train_ages is not None
             assert valid_ages is not None
-            # Compute age-adjusted data. 
+            # Compute models for removing age trends. Do this on the train set to avoid any data leakage. 
             self.age_adjusted_models = self.model_features_as_function_of_age(train_data, train_ages)
             self.age_adjusted_train_data = self.decorrelate_data_with_age(train_data, train_ages)
             self.age_adjusted_valid_data = self.decorrelate_data_with_age(valid_data, valid_ages)
@@ -430,7 +435,7 @@ class GeneralAutoencoder(DimReducer):
     def _get_projections_from_processed_data(self, data, project_onto_mean, rotation_matrix=None):
         """
         if project_onto_mean=True, projects onto the mean value of Z (Z_mu). Otherwise, samples Z.  
-        If rotation_matrix is passed in, rotates.
+        If rotation_matrix is passed in, rotates Z by multiplying by the rotation matrix after projecting it. 
         """
         if rotation_matrix is not None:
             print("Rotating Z by the rotation matrix!")

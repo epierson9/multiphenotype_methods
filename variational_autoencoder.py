@@ -115,7 +115,7 @@ class VariationalAutoencoder(StandardAutoencoder):
         So you probably want the age you pass in to account for that. 
         """
         Z = self.sample_Z(age, n)
-        return sample_X_given_Z(Z)
+        return self.sample_X_given_Z(Z)
     
     def sample_Z(self, age, n):
         return np.random.multivariate_normal(mean = np.zeros([self.k,]), cov = np.eye(self.k), size = n)
@@ -173,7 +173,7 @@ class VariationalAutoencoder(StandardAutoencoder):
             _, binary_loss, continuous_loss, reg_loss = self.minibatch_mean_eval(data, 
                                                                                  ages,
                                                                                  age_adjusted_data=age_adjusted_data,
-                                                                                 regularization_weighting = 1)
+                                                                                 regularization_weighting=1)
                                                                                  
             mean_binary_loss += binary_loss / num_iter
             mean_continuous_loss += continuous_loss / num_iter
