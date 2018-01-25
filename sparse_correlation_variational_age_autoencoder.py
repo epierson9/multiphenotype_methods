@@ -21,12 +21,14 @@ class SparseCorrelationVariationalAgeAutoencoder(VariationalAgeAutoencoder):
                  sparsity_weighting = .1,
                  batch_size=512,
                  min_corr_value = .05,
+                 use_age_adjusted_X=True,
                  **kwargs):
 
         super(SparseCorrelationVariationalAgeAutoencoder, self).__init__(k_age = k_age, 
                                                         Z_age_coef = Z_age_coef, 
                                                         **kwargs)   
         self.sparsity_weighting = sparsity_weighting
+        self.use_age_adjusted_X = use_age_adjusted_X
         self.min_corr_value = min_corr_value # correlations below this value are treated as equivalent. 
         
     def compute_pearson_correlation(self, v1, v2):
@@ -70,11 +72,16 @@ class SparseCorrelationVariationalAgeAutoencoder(VariationalAgeAutoencoder):
         """
         _, binary_loss, continuous_loss, kl_div_loss = super(SparseCorrelationVariationalAgeAutoencoder, self).get_loss()   
         
-        # for non-age states, use correlation with X to compute sparsity loss. 
-        # for age states, use correlation with age_adjusted_X. 
-        sparsity_loss = self.compute_correlation_sparsity_loss(self.Z[:, self.k_age:], self.X)
-        if self.k_age > 0:
-            sparsity_loss += self.compute_correlation_sparsity_loss(self.Z[:, :self.k_age], self.age_adjusted_X)
+        
+        if self.use_age_adjusted_X:
+            # for non-age states, use correlation with X to compute sparsity loss. 
+            # for age states, use correlation with age_adjusted_X. 
+            sparsity_loss = self.compute_correlation_sparsity_loss(self.Z[:, self.k_age:], self.X)
+            if self.k_age > 0:
+                sparsity_loss += self.compute_correlation_sparsity_loss(self.Z[:, :self.k_age], self.age_adjusted_X)
+        else:
+            # if we're not using age adjusted X for the age states, just compute the sparse correlation matrix with X. 
+            sparsity_loss = self.compute_correlation_sparsity_loss(self.Z, self.X)
         
         sparsity_loss = sparsity_loss * self.sparsity_weighting
         
