@@ -12,29 +12,41 @@ from variational_autoencoder import VariationalAutoencoder
 class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
     """
     Implements a variational rate-of-aging autoencoder.
+    Generative model: 
+    rate_of_aging ~ some_prior (currently, rate_of_aging = exp(scaling_factor * N(0, I)), so this is a log-normal prior centered around 1). 
+    Z_age = age * rate_of_aging
+    Z_non_age ~ N(0, I)
     """    
     
     def __init__(self,
                  k_age,
-                 age_rate_scaling_factor=.1,
+                 aging_rate_scaling_factor=.1,
                  **kwargs):
         super(VariationalRateOfAgingAutoencoder, self).__init__(**kwargs)   
         self.k_age = k_age
         assert self.k >= self.k_age
         self.need_ages = True
-        self.age_preprocessing_method = 'scale_so_max_is_one'
+        self.age_preprocessing_method = 'divide_by_a_constant' # important not to zero-mean age here. 
+        # otherwise we end up with people with negative ages, which will mess up the interpretation of the aging rate. 
+        # we divide by a constant to put age on roughly the same scale as the other features. 
+
         self.include_age_in_encoder_input = True
-        self.aging_rate_scaling_factor = .1 
+        self.aging_rate_scaling_factor = aging_rate_scaling_factor 
         # log_unscaled_aging_rate ~ N(0, 1)
         # Z_age = age * exp(self.aging_rate_scaling_factor * log_unscaled_aging_rate) 
         # so aging_rate_scaling_factor controls how much spread we have on the aging rate. 
         
     def sample_Z(self, age, n):
-        """
-        TODO: implement. 
-        """
+        # sample age components.
+        log_unscaled_aging_rate = np.random.multivariate_normal(mean = np.zeros([self.k_age,]), cov = np.eye(self.k_age), size = n)
+        aging_rate = np.exp(self.aging_rate_scaling_factor * log_unscaled_aging_rate)
+        Z_age = age * aging_rate
         
-        return None
+        # sample non-age components.
+        k_non_age = self.k - self.k_age
+        Z_non_age = np.random.multivariate_normal(mean = np.zeros([k_non_age,]), cov = np.eye(k_non_age), size = n)
+
+        return np.concatenate([Z_age, Z_non_age], axis=1)
     
     def encode(self, X, ages):  
         # note that we use the same notation -- Z_mu, Z_sigma -- here as with the standard autoencoder 
@@ -70,8 +82,8 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
         sigma = tf.exp(sigma)
         self.Z_sigma = sigma
 
-        # Sample from N(mu, sigma). The first k_age components are the LOG AGING RATE
-        # the components after that are the residual (Z_non_age)
+        # Sample from N(mu, sigma). The first k_age components are the log unscaled aging rate
+        # the components after that are the residual (Z_non_age, just as before)
         self.eps = tf.random_normal(tf.shape(self.Z_mu), dtype=tf.float32, mean=0., stddev=1.0, seed=self.random_seed)
         log_unscaled_aging_rate_plus_residual = self.Z_mu + self.Z_sigma * self.eps 
         
@@ -79,10 +91,12 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
         # Exponentiate log aging rate and then multiply by age
         log_unscaled_aging_rate = log_unscaled_aging_rate_plus_residual[:, :self.k_age]
         log_aging_rate = self.aging_rate_scaling_factor * log_unscaled_aging_rate
-        aging_rate = tf.clip_by_value(tf.exp(log_aging_rate), 0, 50) # keep from exploding 
+        aging_rate = tf.clip_by_value(tf.exp(log_aging_rate), 
+                clip_value_min=0, 
+                clip_value_max=50) # keep from exploding. We should never be near either of these bounds anyway.  
         Z_age = aging_rate * tf.reshape(ages, [-1, 1]) # relies on broadcasting to reshape age vector. 
         
-        # generate non-age components. This just means taking the last components of log_aging_rate_plus_residual. 
+        # generate non-age components. This just means taking the last components of log_unscaled_aging_rate_plus_residual. 
         Z_non_age = log_unscaled_aging_rate_plus_residual[:, self.k_age:]
         Z = tf.concat([Z_age, Z_non_age], axis=1)
         return Z

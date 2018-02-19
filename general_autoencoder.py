@@ -28,7 +28,7 @@ class GeneralAutoencoder(DimReducer):
         regularization_weighting_schedule={'schedule_type':'constant', 'constant':1}):
 
         self.need_ages = False # whether ages are needed to compute loss or other quantities. 
-        assert age_preprocessing_method in ['zero_mean', 'scale_so_max_is_one']
+        assert age_preprocessing_method in ['zero_mean', 'divide_by_a_constant']
         self.age_preprocessing_method = age_preprocessing_method
         self.include_age_in_encoder_input = include_age_in_encoder_input 
         # include_age_in_encoder_input is whether age is used to approximate the posterior over Z. 
@@ -125,8 +125,10 @@ class GeneralAutoencoder(DimReducer):
         ages = np.array(df['age_sex___age'].values, dtype=np.float32)
         if self.age_preprocessing_method == 'zero_mean':
             ages = ages - np.mean(ages)
-        elif self.age_preprocessing_method == 'scale_so_max_is_one':
-            ages = ages / (1.0*ages.max())
+        elif self.age_preprocessing_method == 'divide_by_a_constant':
+            ages = ages / 70. # this is to keep age roughly on the same scale as other features. 
+            # we hard-code the constant in rather than deriving from data to avoid weird bugs if we train on people with young ages or something
+            # and then test on another group. 
         else:
             raise Exception("Invalid age processing method")
         return ages
