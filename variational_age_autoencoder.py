@@ -42,7 +42,7 @@ class VariationalAgeAutoencoder(VariationalAutoencoder):
         """
         Uses self.X, self.Xr, self.Z_sigma, self.Z_mu, self.kl_weighting
         """
-        _, binary_loss, continuous_loss, _ = super(VariationalAutoencoder, self).get_loss()   
+        _, binary_loss, continuous_loss, _ = super(VariationalAgeAutoencoder, self).get_loss()   
 
         # Subtract off self.Z_age_coef * self.ages from the components of self.Z_mu 
         # that are supposed to correlate with age

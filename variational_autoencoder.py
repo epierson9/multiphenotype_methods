@@ -17,7 +17,8 @@ class VariationalAutoencoder(StandardAutoencoder):
                  **kwargs):
         super(VariationalAutoencoder, self).__init__(**kwargs)   
         self.sigma_scaling = .1 # keeps the sigmas (ie, the std of the normal from which Z is drawn) from getting too large. 
-
+        
+        
     def init_network(self):
         self.weights = {}
         self.biases = {} 
@@ -29,7 +30,7 @@ class VariationalAutoencoder(StandardAutoencoder):
         # Encoder layers.         
         for encoder_layer_idx, encoder_layer_size in enumerate(self.encoder_layer_sizes):
             if encoder_layer_idx == 0:
-                input_dim = len(self.feature_names)
+                input_dim = len(self.feature_names) + self.include_age_in_encoder_input # if we include age in input, need one extra feature. 
             else:
                 input_dim = self.encoder_layer_sizes[encoder_layer_idx - 1]
             output_dim = self.encoder_layer_sizes[encoder_layer_idx]

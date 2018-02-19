@@ -23,9 +23,16 @@ class GeneralAutoencoder(DimReducer):
         binary_loss_weighting=1.0,
         non_linearity='relu', 
         batch_size=128,
+        age_preprocessing_method='zero_mean',
+        include_age_in_encoder_input=False,     
         regularization_weighting_schedule={'schedule_type':'constant', 'constant':1}):
 
         self.need_ages = False
+        assert age_preprocessing_method in ['zero_mean', 'scale_so_max_is_one']
+        self.age_preprocessing_method = age_preprocessing_method
+        # for rate-of-aging autoencoder, we do not do this. 
+        self.include_age_in_encoder_input = include_age_in_encoder_input
+        
         # How many epochs should pass before we evaluate and print out
         # the loss on the training/validation datasets?
         self.num_epochs_before_eval = 10
@@ -78,7 +85,8 @@ class GeneralAutoencoder(DimReducer):
         """
         print("Getting projections using method %s." % self.__class__.__name__)
         X = self.data_preprocessing_function(df)
-        Z = self._get_projections_from_processed_data(X, project_onto_mean, **projection_kwargs)
+        ages = self.get_ages(df)
+        Z = self._get_projections_from_processed_data(X, ages, project_onto_mean, **projection_kwargs)
         Z_df = add_id(Z, df)
         Z_df.columns = ['individual_id'] + ['z%s' % i for i in range(Z.shape[1])]
 
@@ -114,7 +122,12 @@ class GeneralAutoencoder(DimReducer):
 
     def get_ages(self, df):
         ages = np.array(df['age_sex___age'].values, dtype=np.float32)
-        ages -= np.mean(ages)
+        if self.age_preprocessing_method == 'zero_mean':
+            ages = ages - np.mean(ages)
+        elif self.age_preprocessing_method == 'scale_so_max_is_one':
+            ages = ages / (1.0*ages.max())
+        else:
+            raise Exception("Invalid age processing method")
         return ages
     
     def combine_loss_components(self, binary_loss, continuous_loss, regularization_loss):
@@ -216,7 +229,11 @@ class GeneralAutoencoder(DimReducer):
             self.ages = tf.placeholder("float32", None)
             self.regularization_weighting = tf.placeholder("float32")
             self.init_network()
-            self.Z = self.encode(self.X)
+            if self.include_age_in_encoder_input:
+                self.Z = self.encode(self.X, self.ages)
+            else:
+                self.Z = self.encode(self.X)
+                
             self.Xr = self.decode(self.Z)
             self.combined_loss, self.binary_loss, self.continuous_loss, self.reg_loss = self.get_loss()
 
@@ -289,7 +306,10 @@ class GeneralAutoencoder(DimReducer):
                         print("Continuous variance is %2.3f" % continuous_variance)
                     if 'encoder_h0_sigma' in self.weights:
                         # make sure latent state for VAE looks ok by printing out diagnostics
-                        sampled_Z, mu, sigma = self.sess.run([self.Z, self.Z_mu, self.Z_sigma], feed_dict = {self.X:self.train_data})
+                        if self.include_age_in_encoder_input:
+                            sampled_Z, mu, sigma = self.sess.run([self.Z, self.Z_mu, self.Z_sigma], feed_dict = {self.X:self.train_data, self.ages:self.train_ages})
+                        else:
+                            sampled_Z, mu, sigma = self.sess.run([self.Z, self.Z_mu, self.Z_sigma], feed_dict = {self.X:self.train_data})
                         sampled_cov_matrix = np.cov(sampled_Z.transpose())
                         print('mean value of each Z component:')
                         print(sampled_Z.mean(axis = 0))
@@ -432,7 +452,7 @@ class GeneralAutoencoder(DimReducer):
         return df
 
 
-    def _get_projections_from_processed_data(self, data, project_onto_mean, rotation_matrix=None):
+    def _get_projections_from_processed_data(self, data, ages, project_onto_mean, rotation_matrix=None):
         """
         if project_onto_mean=True, projects onto the mean value of Z (Z_mu). Otherwise, samples Z.  
         If rotation_matrix is passed in, rotates Z by multiplying by the rotation matrix after projecting it. 
@@ -444,11 +464,12 @@ class GeneralAutoencoder(DimReducer):
         Zs = []
         while start < len(data):
             data_i = data[start:(start + chunk_size),]
+            ages_i = ages[start:(start + chunk_size)]
             start += chunk_size
             if project_onto_mean:
-                Z = self.sess.run(self.Z_mu, feed_dict = {self.X:data_i})
+                Z = self.sess.run(self.Z_mu, feed_dict = {self.X:data_i, self.ages:ages_i})
             else:
-                Z = self.sess.run(self.Z, feed_dict = {self.X:data_i})
+                Z = self.sess.run(self.Z, feed_dict = {self.X:data_i, self.ages:ages_i})
             if rotation_matrix is not None:
                 Z = np.dot(Z, rotation_matrix)
             Zs.append(Z)    
