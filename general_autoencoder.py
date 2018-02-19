@@ -30,9 +30,11 @@ class GeneralAutoencoder(DimReducer):
         self.need_ages = False # whether ages are needed to compute loss or other quantities. 
         assert age_preprocessing_method in ['zero_mean', 'divide_by_a_constant']
         self.age_preprocessing_method = age_preprocessing_method
-        self.include_age_in_encoder_input = include_age_in_encoder_input 
+        self.include_age_in_encoder_input = include_age_in_encoder_input         
         # include_age_in_encoder_input is whether age is used to approximate the posterior over Z. 
         # Eg, we need this for rate-of-aging autoencoder. 
+        
+        self.can_calculate_Z_mu = True # does the variable Z_mu make any sense for the model. 
         
         # How many epochs should pass before we evaluate and print out
         # the loss on the training/validation datasets?
@@ -327,12 +329,13 @@ class GeneralAutoencoder(DimReducer):
                         print("mean absolute value of off-diagonal covariance elements: %2.3f" % 
                               (np.abs(sampled_cov_matrix[upper_triangle]).mean()))
                         
-                        print('mean value of Z_mu')
-                        print(mu.mean(axis = 0))
-                        print("standard deviation of Z_mu (if this is super-close to 0, that's bad)")
-                        print(mu.std(axis = 0))
-                        print('mean value of Z_sigma')
-                        print(sigma.mean(axis = 0))
+                        if self.can_calculate_Z_mu:
+                            print('mean value of Z_mu')
+                            print(mu.mean(axis = 0))
+                            print("standard deviation of Z_mu (if this is super-close to 0, that's bad)")
+                            print(mu.std(axis = 0))
+                            print('mean value of Z_sigma')
+                            print(sigma.mean(axis = 0))
                         
                     # fmin ignores nan's, so this handles the case when epoch=0
                     min_valid_loss = np.fmin(min_valid_loss, valid_mean_combined_loss)
@@ -457,7 +460,7 @@ class GeneralAutoencoder(DimReducer):
 
     def _get_projections_from_processed_data(self, data, ages, project_onto_mean, rotation_matrix=None):
         """
-        if project_onto_mean=True, projects onto the mean value of Z (Z_mu). Otherwise, samples Z.  
+        if project_onto_mean=True, projects onto the mean value of Z. Otherwise, samples Z.  
         If rotation_matrix is passed in, rotates Z by multiplying by the rotation matrix after projecting it. 
         """
         if rotation_matrix is not None:
@@ -470,7 +473,21 @@ class GeneralAutoencoder(DimReducer):
             ages_i = ages[start:(start + chunk_size)]
             start += chunk_size
             if project_onto_mean:
-                Z = self.sess.run(self.Z_mu, feed_dict = {self.X:data_i, self.ages:ages_i})
+                if self.can_calculate_Z_mu:
+                    # if we have a closed form for Z_mu, use this for Z. 
+                    Z = self.sess.run(self.Z_mu, feed_dict = {self.X:data_i, self.ages:ages_i})
+                else:
+                    # otherwise, compute 10 replicates, take mean. 
+                    n_replicates = 10
+                    for replicate_idx in range(n_replicates):
+                        replicate_Z = self.sess.run(self.Z, feed_dict = {self.X:data_i, self.ages:ages_i})
+                        if replicate_idx == 0:
+                            Z = replicate_Z
+                        else:
+                            Z += replicate_Z
+                    Z = Z / n_replicates
+                    
+                        
             else:
                 Z = self.sess.run(self.Z, feed_dict = {self.X:data_i, self.ages:ages_i})
             if rotation_matrix is not None:
