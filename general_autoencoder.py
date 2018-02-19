@@ -27,11 +27,12 @@ class GeneralAutoencoder(DimReducer):
         include_age_in_encoder_input=False,     
         regularization_weighting_schedule={'schedule_type':'constant', 'constant':1}):
 
-        self.need_ages = False
+        self.need_ages = False # whether ages are needed to compute loss or other quantities. 
         assert age_preprocessing_method in ['zero_mean', 'scale_so_max_is_one']
         self.age_preprocessing_method = age_preprocessing_method
-        # for rate-of-aging autoencoder, we do not do this. 
-        self.include_age_in_encoder_input = include_age_in_encoder_input
+        self.include_age_in_encoder_input = include_age_in_encoder_input 
+        # include_age_in_encoder_input is whether age is used to approximate the posterior over Z. 
+        # Eg, we need this for rate-of-aging autoencoder. 
         
         # How many epochs should pass before we evaluate and print out
         # the loss on the training/validation datasets?
