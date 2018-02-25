@@ -120,6 +120,81 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
         
         return Z
     
+    def init_network(self):
+        """
+        the only difference here is with the decoder, since we need to split out the age state and the residual. 
+        """
+        self.weights = {}
+        self.biases = {} 
+        
+        if self.learn_continuous_variance:
+            # we exponentiate this because it has to be non-negative. 
+            self.log_continuous_variance = tf.Variable(self.initialization_function([1]))
+        
+        # Encoder layers -- the same.       
+        for encoder_layer_idx, encoder_layer_size in enumerate(self.encoder_layer_sizes):
+            if encoder_layer_idx == 0:
+                input_dim = len(self.feature_names) + self.include_age_in_encoder_input # if we include age in input, need one extra feature. 
+            else:
+                input_dim = self.encoder_layer_sizes[encoder_layer_idx - 1]
+            output_dim = self.encoder_layer_sizes[encoder_layer_idx]
+            print("Added encoder layer with input dimension %i and output dimension %i" % (input_dim, output_dim))
+            self.weights['encoder_h%i' % encoder_layer_idx] = tf.Variable(
+                self.initialization_function([input_dim, output_dim]))
+            self.biases['encoder_b%i' % encoder_layer_idx] = tf.Variable(
+                self.initialization_function([output_dim]))
+            self.weights['encoder_h%i_sigma' % encoder_layer_idx] = tf.Variable(
+                self.initialization_function([input_dim, output_dim]))
+            self.biases['encoder_b%i_sigma' % encoder_layer_idx] = tf.Variable(
+                self.initialization_function([output_dim])) 
+
+        # Decoder layers -- here, we need to split out the age state and the residual. 
+        # so the decoder produces f(Z_age) + g(residual)
+        
+        self.decoder_layer_sizes.append(len(self.feature_names))
+        for decoder_name in ['Z_age', 'residual']:
+            for decoder_layer_idx, decoder_layer_size in enumerate(self.decoder_layer_sizes):
+                if decoder_layer_idx == 0:
+                    if decoder_name == 'Z_age':
+                        input_dim = self.k_age
+                    else:
+                        input_dim = self.k - self.k_age
+                else:
+                    input_dim = self.decoder_layer_sizes[decoder_layer_idx - 1]
+                output_dim = self.decoder_layer_sizes[decoder_layer_idx]
+                print("Added decoder layer for %s with input dimension %i and output dimension %i" % (decoder_name, 
+                                                                                                      input_dim, 
+                                                                                                      output_dim))
+                self.weights['decoder_%s_h%i' % (decoder_name, decoder_layer_idx)] = tf.Variable(
+                    self.initialization_function([input_dim, output_dim]))
+                self.biases['decoder_%s_b%i' % (decoder_name, decoder_layer_idx)] = tf.Variable(
+                    self.initialization_function([output_dim]))
+    
+    def decode(self, Z):
+        """
+        we have to separately decode Z_age and the residual, then add them back together. 
+        Decoding procedure is identical for both Z_age and residual although they use different weights. 
+        """
+        num_layers = len(self.decoder_layer_sizes)
+        
+        # todo: should we worry about view versus copy here? Ie, if we modify these things, will it modify Z? 
+        Z_age = Z[:, :self.k_age]
+        residual = Z[:, self.k_age:]
+        
+        for idx in range(num_layers):
+            Z_age = tf.matmul(Z_age, self.weights['decoder_Z_age_h%i' % idx]) \
+                + self.biases['decoder_Z_age_b%i' % idx]
+            residual = tf.matmul(residual, self.weights['decoder_residual_h%i' % idx]) \
+                + self.biases['decoder_residual_b%i' % idx]
+            # No non-linearity on the last layer
+            if idx != num_layers - 1:
+                Z_age = self.non_linearity(Z_age) 
+                residual = self.non_linearity(residual)
+        
+        X_with_logits = Z_age + residual
+        
+        return X_with_logits
+    
     def get_loss(self):
         # The KL loss is just the KL loss for N(0, I) computed on encoder_mu and encoder_sigma. 
         _, binary_loss, continuous_loss, _ = super(VariationalRateOfAgingAutoencoder, self).get_loss()   
