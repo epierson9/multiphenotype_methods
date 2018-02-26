@@ -184,7 +184,6 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
         """
         num_layers = len(self.decoder_layer_sizes)
         
-        # todo: should we worry about view versus copy here? Ie, if we modify these things, will it modify Z? 
         Z_age = Z[:, :self.k_age]
         residual = Z[:, self.k_age:]
         
