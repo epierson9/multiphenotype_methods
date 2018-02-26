@@ -111,9 +111,8 @@ class VariationalAutoencoder(StandardAutoencoder):
         """
         samples X by first sampling Z from the autoencoder prior, then feeding it through the model. 
         Draws n samples for people of a given age. 
-        Important note: in our age autoencoder formulation, age is zero-centered 
-        (ie, we train the model with ages whose mean has been subtracted off). 
-        So you probably want the age you pass in to account for that. 
+        Important note: in general, this function relies on sample_Z, which automatically applies the age preprocessing function
+        to the passed in age, so there is no need to transform age ahead of time (for either sample_X or sample_Z). 
         """
         Z = self.sample_Z(age, n)
         return self.sample_X_given_Z(Z)

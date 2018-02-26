@@ -23,12 +23,12 @@ class GeneralAutoencoder(DimReducer):
         binary_loss_weighting=1.0,
         non_linearity='relu', 
         batch_size=128,
-        age_preprocessing_method='zero_mean',
+        age_preprocessing_method='subtract_a_constant',
         include_age_in_encoder_input=False,     
         regularization_weighting_schedule={'schedule_type':'constant', 'constant':1}):
 
         self.need_ages = False # whether ages are needed to compute loss or other quantities. 
-        assert age_preprocessing_method in ['zero_mean', 'divide_by_a_constant']
+        assert age_preprocessing_method in ['subtract_a_constant', 'divide_by_a_constant']
         self.age_preprocessing_method = age_preprocessing_method
         self.include_age_in_encoder_input = include_age_in_encoder_input         
         # include_age_in_encoder_input is whether age is used to approximate the posterior over Z. 
@@ -123,18 +123,25 @@ class GeneralAutoencoder(DimReducer):
     def get_loss():
         raise NotImplementedError
 
-    def get_ages(self, df):
-        ages = np.array(df['age_sex___age'].values, dtype=np.float32)
-        if self.age_preprocessing_method == 'zero_mean':
-            ages = ages - np.mean(ages)
+    def age_preprocessing_function(self, ages):
+        # two possibilities: either subtract a constant (to roughly zero-mean ages) 
+        # or divide by a constant (to keep age roughly on the same-scale as the other features)
+        # in both cases, we hard-code the constant in rather than deriving from data 
+        # to avoid weird bugs if we train on people with young ages or something and then test on another group. 
+        # the constant is chosen for UKBB data, which has most respondents 40 - 70. 
+        
+        if self.age_preprocessing_method == 'subtract_a_constant':
+            ages = ages - 55. 
         elif self.age_preprocessing_method == 'divide_by_a_constant':
-            ages = ages / 70. # this is to keep age roughly on the same scale as other features. 
-            # we hard-code the constant in rather than deriving from data to avoid weird bugs if we train on people with young ages or something
-            # and then test on another group. 
+            ages = ages / 70. 
         else:
             raise Exception("Invalid age processing method")
         return ages
     
+    def get_ages(self, df):
+        ages = np.array(df['age_sex___age'].values, dtype=np.float32)
+        return self.age_preprocessing_function(ages)
+            
     def combine_loss_components(self, binary_loss, continuous_loss, regularization_loss):
         return binary_loss + continuous_loss + self.regularization_weighting * regularization_loss
 
@@ -333,7 +340,7 @@ class GeneralAutoencoder(DimReducer):
                             print('mean value of Z_mu')
                             print(mu.mean(axis = 0))
                             print("standard deviation of Z_mu (if this is super-close to 0, that's bad)")
-                            print(mu.std(axis = 0))
+                            print(mu.std(axis = 0, ddof=1))
                             print('mean value of Z_sigma')
                             print(sigma.mean(axis = 0))
                         

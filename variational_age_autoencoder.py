@@ -27,10 +27,13 @@ class VariationalAgeAutoencoder(VariationalAutoencoder):
     def sample_Z(self, age, n):
         """
         samples Z from the age autoencoder prior. 
+        Important note: this function automatically applies the age preprocessing function
+        to the passed in age, so there is no need to transform age ahead of time. 
         """
+        preprocessed_age = self.age_preprocessing_function(age)
         Z = np.zeros([n, self.k])
         # For age components, need to add age shift. Other components are zero-centered. 
-        Z[:, :self.k_age] = age * self.Z_age_coef
+        Z[:, :self.k_age] = preprocessed_age * self.Z_age_coef
         
         # add noise to all components. 
         Z = Z + np.random.multivariate_normal(mean = np.zeros([self.k,]),

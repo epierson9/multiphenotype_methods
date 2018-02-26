@@ -13,7 +13,9 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
     """
     Implements a variational rate-of-aging autoencoder.
     Generative model: 
-    rate_of_aging ~ some_prior (currently, rate_of_aging = exp(scaling_factor * N(0, I)), so this is a log-normal prior centered around 1). 
+    rate_of_aging ~ some_prior (currently, rate_of_aging = exp(scaling_factor * N(0, I)), so this is a log-normal prior. 
+    Note that the log-normal prior will have a peak at one, but its mean will be greater than one
+    (because the log-normal mean is right-shifted: https://en.wikipedia.org/wiki/Log-normal_distribution)
     Z_age = age * rate_of_aging
     Z_non_age ~ N(0, I)
     """    
@@ -38,10 +40,14 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
         # so aging_rate_scaling_factor controls how much spread we have on the aging rate. 
         
     def sample_Z(self, age, n):
+        # this function automatically applies the age preprocessing function to the passed in age
+        # so there is no need to transform age ahead of time. 
+        
         # sample age components.
+        preprocessed_age = self.age_preprocessing_function(age)
         log_unscaled_aging_rate = np.random.multivariate_normal(mean = np.zeros([self.k_age,]), cov = np.eye(self.k_age), size = n)
         aging_rate = np.exp(self.aging_rate_scaling_factor * log_unscaled_aging_rate)
-        Z_age = age * aging_rate
+        Z_age = preprocessed_age * aging_rate
         
         # sample non-age components.
         k_non_age = self.k - self.k_age
@@ -56,6 +62,7 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
         # they are the mean and std of the log_unscaled_aging_rate, not of Z. 
         # so we have Z_age = age * exp(self.aging_rate_scaling_factor * log_unscaled_aging_rate) 
         # where log_unscaled_aging_rate ~ N(0, 1). 
+        
         
         # concatenate age onto X, since we use both to generate the posterior over Z.
         X_with_age = tf.concat([X, tf.reshape(ages, [-1, 1])], axis=1) # make age 2d. 
