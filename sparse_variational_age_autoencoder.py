@@ -14,7 +14,6 @@ from variational_age_autoencoder import VariationalAgeAutoencoder
 class SparseVariationalAgeAutoencoder(VariationalAgeAutoencoder):
     """
     Implements a variational autoencoder with an age prior and sparsity.
-    The loss function for this only really makes sense when we have a single decoder layer, so we assert that. 
     """    
     def __init__(self,
                  k_age,
@@ -35,47 +34,31 @@ class SparseVariationalAgeAutoencoder(VariationalAgeAutoencoder):
         assert self.k >= self.k_age
         self.need_ages = True
 
-        self.initialization_function = self.glorot_init
-        self.kl_weighting = 1
-        #self.non_linearity = tf.nn.sigmoid
         self.sigma_scaling = .1
         self.sparsity_weighting = sparsity_weighting
         
         # assert we only have a single decoder layer (otherwise the sparsity loss doesn't make sense). 
-        assert(len([layer_name for layer_name in self.weights if 'decoder' in layer_name]) == 1)
+        #assert(len([layer_name for layer_name in self.weights if 'decoder' in layer_name]) == 1)
 
     def get_loss(self):
         """
         Uses self.X, self.Xr, self.Z_sigma, self.Z_mu, self.kl_weighting
         """
-        _, binary_loss, continuous_loss, _ = super(VariationalAutoencoder, self).get_loss()   
-
-        # Subtract off self.Z_age_coef * self.ages from the components of self.Z_mu 
-        # that are supposed to correlate with age
-        # This assumes that the age-related components are drawn from N(Z_age_coef * age, 1)
-        Z_mu_age = self.Z_mu[:, :self.k_age] - self.Z_age_coef * tf.reshape(self.ages, (-1, 1)) # Relies on broadcasting
-
-        # Leave the other components untouched
-        Z_mu_others = self.Z_mu[:, self.k_age:]
-
-        # Z_mu_diffs is the difference between Z_mu and the priors
-        Z_mu_diffs = tf.concat((Z_mu_age, Z_mu_others), axis=1)
-
-        kl_div_loss = -.5 * (
-            1 + 
-            2 * tf.log(self.Z_sigma) - tf.square(Z_mu_diffs) - tf.square(self.Z_sigma))
-        kl_div_loss = tf.reduce_mean(
-            tf.reduce_sum(
-                kl_div_loss,
-                axis=1),
-            axis=0) * self.kl_weighting
+        _, binary_loss, continuous_loss, kl_div_loss = super(SparseVariationalAgeAutoencoder, self).get_loss()   
         
-        sparsity_loss = 0
-        for layer_name in self.weights:
-            if 'decoder' in layer_name:
-                sparsity_loss += tf.reduce_sum(tf.abs(self.weights[layer_name]))
-        sparsity_loss = sparsity_loss * self.sparsity_weighting
+        decoder_layer_number = 0
+        layer_name = 'decoder_h%i' % decoder_layer_number
+        while layer_name in self.weights:
+            print('adding sparsity loss to decoder layer ' + layer_name)
+            if decoder_layer_number == 0:
+                combined_weight_matrix = tf.abs(self.weights[layer_name])
+            else:
+                combined_weight_matrix = tf.matmul(combined_weight_matrix, tf.abs(self.weights[layer_name]))
+            decoder_layer_number += 1
+            layer_name = 'decoder_h%i' % decoder_layer_number
+            
+        sparsity_loss = tf.reduce_sum(tf.abs(combined_weight_matrix))
+        regularization_loss = kl_div_loss + sparsity_loss * self.sparsity_weighting
+        combined_loss = self.combine_loss_components(binary_loss, continuous_loss, regularization_loss)
 
-        combined_loss = self.combine_loss_components(binary_loss, continuous_loss, kl_div_loss + sparsity_loss)
-
-        return combined_loss, binary_loss, continuous_loss, kl_div_loss  
+        return combined_loss, binary_loss, continuous_loss, regularization_loss  
