@@ -151,7 +151,13 @@ class VariationalAutoencoder(StandardAutoencoder):
         ages = None
         age_adjusted_data = None
         if self.need_ages:
+            # in general, self.need_ages is True for the variational age autoencoders 
+            # (most of our interesting models). It is False for models that have nothing to do with age: 
+            # eg, the simple variational autoencoder. 
             ages = self.get_ages(df)
+            # some models additionally require us to compute the age_adjusted_data, so we compute that just in case. 
+            # eg, if we want to enforce sparse correlations between X (adjusted for age) and Z. 
+            # age_adjusted_data is not actually used for most models. 
             age_adjusted_data = self.decorrelate_data_with_age(data, ages)            
         
         assert np.all(binary_feature_idxs == self.binary_feature_idxs)

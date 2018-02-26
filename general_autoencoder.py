@@ -361,30 +361,38 @@ class GeneralAutoencoder(DimReducer):
         and handles various parameters being set to None.
         """
         if idxs is not None:
+            # if idxs is not None, we want to take subsets of the data using boolean indices
+            
+            # if we pass in ages, subset appropriately; otherwise, just set to None to avoid an error. 
             if ages is not None:
-                indexed_ages = ages[idxs]
+                ages_to_use = ages[idxs]
             else:
-                indexed_ages = ages
-                
+                ages_to_use = None
+            
+            # similarly, if we pass in age_adjusted_data, subset appropriately
+            # otherwise, just set to None to avoid an error.
             if age_adjusted_data is not None:
-                indexed_age_adjusted_data = age_adjusted_data[idxs, :]
+                age_adjusted_data_to_use = age_adjusted_data[idxs, :]
             else:
-                indexed_age_adjusted_data = age_adjusted_data
-            indexed_data = data[idxs, :]
+                age_adjusted_data_to_use = None
+                
+            # data will always be not None, so we can safely subset it. 
+            data_to_use = data[idxs, :]
         else:
-            indexed_ages = ages
-            indexed_data = data
-            indexed_age_adjusted_data = age_adjusted_data
+            # if we don't pass in indices, we just want to use all the data. 
+            ages_to_use = ages
+            data_to_use = data
+            age_adjusted_data_to_use = age_adjusted_data
 
        
         if self.need_ages:
             feed_dict = {
-                self.ages:indexed_ages, 
-                self.X:indexed_data, 
-                self.age_adjusted_X:indexed_age_adjusted_data,
+                self.ages:ages_to_use, 
+                self.X:data_to_use, 
+                self.age_adjusted_X:age_adjusted_data_to_use,
                 self.regularization_weighting:regularization_weighting}
         else:
-            feed_dict = {self.X:indexed_data, 
+            feed_dict = {self.X:data_to_use, 
                         self.regularization_weighting:regularization_weighting}
         return feed_dict
 
