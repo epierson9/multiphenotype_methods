@@ -222,8 +222,12 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
             axis=0)
         
         # add in a sparsity loss: L1 penalty on the age state decoder. 
-        sparsity_loss = tf.reduce_sum(tf.abs(self.weights['decoder_Z_age_h0']))
-        regularization_loss = kl_div_loss + sparsity_loss * self.sparsity_weighting
+        if self.sparsity_weighting > 0:
+            sparsity_loss = tf.reduce_sum(tf.abs(self.weights['decoder_Z_age_h0']))
+            regularization_loss = kl_div_loss + sparsity_loss * self.sparsity_weighting
+        else:
+            regularization_loss = kl_div_loss
+            
         combined_loss = self.combine_loss_components(binary_loss, continuous_loss, regularization_loss)
 
         return combined_loss, binary_loss, continuous_loss, regularization_loss
