@@ -1,3 +1,4 @@
+from copy import deepcopy
 import numpy as np
 from multiphenotype_utils import (get_continuous_features_as_matrix, add_id, remove_id_and_get_mat, 
     partition_dataframe_into_binary_and_continuous, divide_idxs_into_batches)
@@ -22,12 +23,14 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
     
     def __init__(self,
                  k_age,
+                 sparsity_weighting=0,
                  aging_rate_scaling_factor=.1,
                  **kwargs):
         super(VariationalRateOfAgingAutoencoder, self).__init__(**kwargs)   
         self.k_age = k_age
         assert self.k >= self.k_age
         self.need_ages = True
+        self.sparsity_weighting = sparsity_weighting
         self.can_calculate_Z_mu = False
         self.age_preprocessing_method = 'divide_by_a_constant' # important not to zero-mean age here. 
         # otherwise we end up with people with negative ages, which will mess up the interpretation of the aging rate. 
@@ -37,7 +40,11 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
         self.aging_rate_scaling_factor = aging_rate_scaling_factor 
         # log_unscaled_aging_rate ~ N(0, 1)
         # Z_age = age * exp(self.aging_rate_scaling_factor * log_unscaled_aging_rate) 
-        # so aging_rate_scaling_factor controls how much spread we have on the aging rate. 
+        # so aging_rate_scaling_factor controls how much spread we have on the aging rate.
+        
+        # assert we only have a single decoder layer (otherwise the sparsity loss doesn't make sense). 
+        if self.sparsity_weighting > 0:
+            assert(len(self.decoder_layer_sizes) == 0)
         
     def sample_Z(self, age, n):
         # this function automatically applies the age preprocessing function to the passed in age
@@ -213,8 +220,25 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
                 kl_div_loss,
                 axis=1),
             axis=0)
-
-        combined_loss = self.combine_loss_components(binary_loss, continuous_loss, kl_div_loss)
-
-        return combined_loss, binary_loss, continuous_loss, kl_div_loss
         
+        # add in a sparsity loss: L1 penalty on the age state decoder. 
+        if self.sparsity_weighting > 0:
+            sparsity_loss = tf.reduce_sum(tf.abs(self.weights['decoder_Z_age_h0']))
+            regularization_loss = kl_div_loss + sparsity_loss * self.sparsity_weighting
+        else:
+            regularization_loss = kl_div_loss
+            
+        combined_loss = self.combine_loss_components(binary_loss, continuous_loss, regularization_loss)
+
+        return combined_loss, binary_loss, continuous_loss, regularization_loss
+    
+    def get_rate_of_aging_plus_residual(self, Z_df, train_df):
+        """
+        helper method: given Z, divides by age to return the rate of aging plus the residual. 
+        """
+        rate_of_aging_plus_residual = deepcopy(Z_df)
+        preprocessed_ages = self.get_ages(train_df)
+        for k in range(self.k_age):
+            rate_of_aging_plus_residual['z%i' % k] = rate_of_aging_plus_residual['z%i' % k] / preprocessed_ages
+        return rate_of_aging_plus_residual
+

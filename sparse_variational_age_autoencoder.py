@@ -26,15 +26,12 @@ class SparseVariationalAgeAutoencoder(VariationalAgeAutoencoder):
                                                         **kwargs)   
         # Does not include input_dim, but includes last hidden layer
         # self.encoder_layer_sizes = encoder_layer_sizes
-        # self.k = self.encoder_layer_sizes[-1]        
 
-        # self.decoder_layer_sizes = decoder_layer_sizes
         self.k_age = k_age
         self.Z_age_coef = Z_age_coef
         assert self.k >= self.k_age
         self.need_ages = True
 
-        self.sigma_scaling = .1
         self.sparsity_weighting = sparsity_weighting
         
         # assert we only have a single decoder layer (otherwise the sparsity loss doesn't make sense). 
