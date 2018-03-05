@@ -136,7 +136,7 @@ class GeneralAutoencoder(DimReducer):
             ages = ages / 70. 
         else:
             raise Exception("Invalid age processing method")
-        return ages
+        return np.array(ages)
     
     def get_ages(self, df):
         ages = np.array(df['age_sex___age'].values, dtype=np.float32)
@@ -471,7 +471,6 @@ class GeneralAutoencoder(DimReducer):
         df = add_id(Z=X, df_with_id=Z_df)
         df.columns = ['individual_id'] + self.feature_names
         return df
-
 
     def _get_projections_from_processed_data(self, data, ages, project_onto_mean, rotation_matrix=None):
         """

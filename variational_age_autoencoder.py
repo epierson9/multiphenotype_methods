@@ -70,3 +70,21 @@ class VariationalAgeAutoencoder(VariationalAutoencoder):
         combined_loss = self.combine_loss_components(binary_loss, continuous_loss, kl_div_loss)
 
         return combined_loss, binary_loss, continuous_loss, kl_div_loss  
+    
+    def project_forward(self, train_df, years_to_move_forward, project_onto_mean=True):
+        """
+        given a df and an autoencoder model, projects the train_df down into Z-space, moves it 
+        years_to_move_forward in Z-space, then projects it back up. 
+        Note that Z here will be sampled stochastically if project_onto_mean = False
+        and X will be sampled stochastically given Z. 
+        Sampling X will introduce a lot of noise, so it is good for comparing distributions but maybe not for individual 
+        aging trajectories (eg, in the longitudinal data). 
+        """
+        Z0 = self.get_projections(train_df, project_onto_mean=project_onto_mean)
+        Z0_projected_forward = copy.deepcopy(Z0)
+        for k in range(self.k_age):
+            Z0_projected_forward['z%i' % k] = Z0_projected_forward['z%i' % k] + \
+            self.model_learned_age_coefs[k] * years_to_move_forward
+        projected_trajectory = self.sample_X_given_Z(remove_id_and_get_mat(Z0_projected_forward))
+        assert projected_trajectory.shape[1] == len(self.feature_names)
+        return projected_trajectory

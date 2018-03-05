@@ -139,7 +139,18 @@ class VariationalAutoencoder(StandardAutoencoder):
 
         return combined_loss, binary_loss, continuous_loss, kl_div_loss  
 
-
+    def project_forward(self, train_df, years_to_move_forward, project_onto_mean=True):
+        """
+        given a df and an autoencoder model, projects the train_df down into Z-space, moves it 
+        years_to_move_forward in Z-space, then projects it back up. 
+        Note that Z here will be sampled stochastically if project_onto_mean = False
+        and X will be sampled stochastically given Z. 
+        Sampling X will introduce a lot of noise, so it is good for comparing distributions but maybe not for individual 
+        aging trajectories (eg, in the longitudinal data). 
+        This will not make sense unless the model has some notion of an age state. 
+        """
+        raise NotImplementedException
+        
     def compute_elbo(self, df, continuous_variance=1):
         if self.learn_continuous_variance:
             continuous_variance = np.exp(self.sess.run(self.log_continuous_variance)[0])
