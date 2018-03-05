@@ -242,21 +242,16 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
             rate_of_aging_plus_residual['z%i' % k] = rate_of_aging_plus_residual['z%i' % k] / preprocessed_ages
         return rate_of_aging_plus_residual
 
-    def project_forward(self, train_df, years_to_move_forward, project_onto_mean=True):
-        # project down to get rate of aging. 
-        Z_df = self.get_projections(train_df, project_onto_mean=project_onto_mean)
-        rate_of_aging_plus_residual = self.get_rate_of_aging_plus_residual(Z_df, train_df)
+    def fast_forward_Z(self, Z0, train_df, years_to_move_forward):
+        # get rate of aging. 
+        rate_of_aging_plus_residual = self.get_rate_of_aging_plus_residual(Z0, train_df)
         
         # compute the fast-forwarded ages. 
-        current_ages = self.get_ages(train_df)
         fastforwarded_ages = self.age_preprocessing_function(train_df['age_sex___age'] + years_to_move_forward)
         
         # project Z forward. 
-        Z0_projected_forward = Z_df
+        Z0_projected_forward = deepcopy(Z0)
         for k in range(self.k_age):
-            assert np.allclose(Z_df['z%i' % k], rate_of_aging_plus_residual['z%i' % k] * current_ages)
             Z0_projected_forward['z%i' % k] = rate_of_aging_plus_residual['z%i' % k] * fastforwarded_ages
             
-        projected_trajectory = self.sample_X_given_Z(remove_id_and_get_mat(Z0_projected_forward))
-        assert projected_trajectory.shape[1] == len(self.feature_names)
-        return projected_trajectory
+        return Z0_projected_forward
