@@ -491,8 +491,9 @@ class GeneralAutoencoder(DimReducer):
                     # if we have a closed form for Z_mu, use this for Z. 
                     Z = self.sess.run(self.Z_mu, feed_dict = {self.X:data_i, self.ages:ages_i})
                 else:
-                    # otherwise, compute 10 replicates, take mean. 
-                    n_replicates = 10
+                    # otherwise, compute 100 replicates, take mean. 
+                    n_replicates = 100
+                    print('number of replicates to compute Z_mu: %i' % n_replicates)
                     for replicate_idx in range(n_replicates):
                         replicate_Z = self.sess.run(self.Z, feed_dict = {self.X:data_i, self.ages:ages_i})
                         if replicate_idx == 0:
