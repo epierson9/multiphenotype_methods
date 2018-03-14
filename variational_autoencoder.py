@@ -158,7 +158,7 @@ class VariationalAutoencoder(StandardAutoencoder):
         
         if years_to_move_forward == 0:
             # if we're not moving forward at all, Z0 is just Z. This is equivalent to reconstruction. 
-            Z0_projected_forward = Z0
+            Z0_projected_forward = remove_id_and_get_mat(Z0)
         else:
             # move age components forward following the model's evolution rule. 
             Z0_projected_forward = self.fast_forward_Z(Z0, train_df, years_to_move_forward)
