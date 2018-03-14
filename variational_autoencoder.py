@@ -156,7 +156,7 @@ class VariationalAutoencoder(StandardAutoencoder):
         else:
             Z0 = self.get_projections(train_df, project_onto_mean=True)
         
-        if years_to_move_forward == 0:
+        if (np.array(years_to_move_forward) == 0).all():
             # if we're not moving forward at all, Z0 is just Z. This is equivalent to reconstruction. 
             Z0_projected_forward = remove_id_and_get_mat(Z0)
         else:
