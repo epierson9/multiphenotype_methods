@@ -142,7 +142,7 @@ class VariationalAutoencoder(StandardAutoencoder):
     def project_forward(self, train_df, years_to_move_forward, add_noise_to_Z, add_noise_to_X):
         """
         given a df and an autoencoder model, projects the train_df down into Z-space, moves it 
-        years_to_move_forward in Z-space, then projects it back up. 
+        years_to_move_forward in Z-space, then projects it back up. years_to_move_forward can be an array or a scalar. 
         
         This will not make sense unless the model has some notion of an age state and how it evolves, 
         so to implement this method, you need to implement fast_forward_Z. 
@@ -150,14 +150,18 @@ class VariationalAutoencoder(StandardAutoencoder):
         if add_noise_to_Z is False, Z is projected onto the mean; otherwise, it's sampled. 
         if add_noise_to_X is False, X is decoded directly from Z (ie, it is Xr); otherwise, it's sampled. 
         """
+        # cast years_to_move_forward to an array (I think this should be fine even if it is a scalar?)
+        years_to_move_forward = np.array(years_to_move_forward)
+        
         # project down to latent state. 
         if add_noise_to_Z:
             Z0 = self.get_projections(train_df, project_onto_mean=False)
         else:
             Z0 = self.get_projections(train_df, project_onto_mean=True)
         
-        if (np.array(years_to_move_forward) == 0).all():
+        if (years_to_move_forward == 0).all():
             # if we're not moving forward at all, Z0 is just Z. This is equivalent to reconstruction. 
+            # we shouldn't actually need this if-branch, but it makes what is happening a little more explicit. 
             Z0_projected_forward = remove_id_and_get_mat(Z0)
         else:
             # move age components forward following the model's evolution rule. 

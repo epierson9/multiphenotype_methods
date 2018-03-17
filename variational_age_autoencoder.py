@@ -76,6 +76,6 @@ class VariationalAgeAutoencoder(VariationalAutoencoder):
         # move age components forward. 
         for k in range(self.k_age):
             Z0_projected_forward['z%i' % k] = Z0_projected_forward['z%i' % k] + \
-            self.model_learned_age_coefs[k] * years_to_move_forward
+            self.model_learned_age_coefs[k] * np.array(years_to_move_forward)
             
         return Z0_projected_forward
