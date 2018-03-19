@@ -31,7 +31,7 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
         assert self.k >= self.k_age
         self.need_ages = True
         self.sparsity_weighting = sparsity_weighting
-        self.can_calculate_Z_mu = False
+        self.can_calculate_Z_mu = True
         self.age_preprocessing_method = 'divide_by_a_constant' # important not to zero-mean age here. 
         # otherwise we end up with people with negative ages, which will mess up the interpretation of the aging rate. 
         # we divide by a constant to put age on roughly the same scale as the other features. 
@@ -125,12 +125,22 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
         Z_non_age = log_unscaled_aging_rate_plus_residual[:, self.k_age:]
         Z = tf.concat([Z_age, Z_non_age], axis=1)
         
-        # We may want to generate Z_mu and Z_sigma because other classes make use of them.  
-        # both of these are calculable but a little convoluted; set to np.nan for now. 
-        # https://en.wikipedia.org/wiki/Log-normal_distribution
-        # nans should make it obvious if we are erroneously calling these values. 
-        self.Z_mu = tf.zeros(tf.shape(Z)) * np.nan
-        self.Z_sigma = tf.zeros(tf.shape(Z)) * np.nan
+        # We generate Z_mu and Z_sigma because other classes make use of them.  
+        # both of these are calculable but a little convoluted.
+        
+        # for non-age components, Z_mu and Z_sigma are just encoder_mu and encoder_sigma, as before. 
+        self.Z_mu = self.encoder_mu
+        self.Z_sigma = self.encoder_sigma
+        
+        # for age components, we use the expressions here: https://en.wikipedia.org/wiki/Log-normal_distribution
+        # first we compute the parameters of the log-normal distribution, which requires multiplying by the scaling factor
+        log_normal_mu_parameter = self.encoder_mu[:, :self.k_age] * self.aging_rate_scaling_factor
+        log_normal_sigma_parameter = self.encoder_sigma[:, :self.k_age] * self.aging_rate_scaling_factor
+        
+        # then we plug those in to calculate the mean and sigma
+        self.Z_mu[:, :self.k_age] = tf.exp(log_normal_mu_parameter + log_normal_sigma_parameter**2/2.0)
+        self.Z_sigma[:, :self.k_age] = tf.sqrt(
+            tf.exp(log_normal_sigma_parameter**2 - 1) * tf.exp(2*log_normal_mu_parameter + log_normal_sigma_parameter**2))
         
         return Z
     
@@ -242,3 +252,16 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
             rate_of_aging_plus_residual['z%i' % k] = rate_of_aging_plus_residual['z%i' % k] / preprocessed_ages
         return rate_of_aging_plus_residual
 
+    def fast_forward_Z(self, Z0, train_df, years_to_move_forward):
+        # get rate of aging. 
+        rate_of_aging_plus_residual = self.get_rate_of_aging_plus_residual(Z0, train_df)
+        
+        # compute the fast-forwarded ages. 
+        fastforwarded_ages = self.age_preprocessing_function(train_df['age_sex___age'] + np.array(years_to_move_forward))
+        
+        # project Z forward. 
+        Z0_projected_forward = deepcopy(Z0)
+        for k in range(self.k_age):
+            Z0_projected_forward['z%i' % k] = np.array(rate_of_aging_plus_residual['z%i' % k]) * fastforwarded_ages
+            
+        return Z0_projected_forward

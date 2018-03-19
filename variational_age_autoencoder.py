@@ -70,3 +70,12 @@ class VariationalAgeAutoencoder(VariationalAutoencoder):
         combined_loss = self.combine_loss_components(binary_loss, continuous_loss, kl_div_loss)
 
         return combined_loss, binary_loss, continuous_loss, kl_div_loss  
+    
+    def fast_forward_Z(self, Z0, train_df, years_to_move_forward):
+        Z0_projected_forward = copy.deepcopy(Z0)
+        # move age components forward. 
+        for k in range(self.k_age):
+            Z0_projected_forward['z%i' % k] = Z0_projected_forward['z%i' % k] + \
+            self.model_learned_age_coefs[k] * np.array(years_to_move_forward)
+            
+        return Z0_projected_forward

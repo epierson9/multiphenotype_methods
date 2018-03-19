@@ -136,7 +136,7 @@ class GeneralAutoencoder(DimReducer):
             ages = ages / 70. 
         else:
             raise Exception("Invalid age processing method")
-        return ages
+        return np.array(ages)
     
     def get_ages(self, df):
         ages = np.array(df['age_sex___age'].values, dtype=np.float32)
@@ -472,7 +472,6 @@ class GeneralAutoencoder(DimReducer):
         df.columns = ['individual_id'] + self.feature_names
         return df
 
-
     def _get_projections_from_processed_data(self, data, ages, project_onto_mean, rotation_matrix=None):
         """
         if project_onto_mean=True, projects onto the mean value of Z. Otherwise, samples Z.  
@@ -492,8 +491,9 @@ class GeneralAutoencoder(DimReducer):
                     # if we have a closed form for Z_mu, use this for Z. 
                     Z = self.sess.run(self.Z_mu, feed_dict = {self.X:data_i, self.ages:ages_i})
                 else:
-                    # otherwise, compute 10 replicates, take mean. 
-                    n_replicates = 10
+                    # otherwise, compute 100 replicates, take mean. 
+                    n_replicates = 100
+                    print('number of replicates to compute Z_mu: %i' % n_replicates)
                     for replicate_idx in range(n_replicates):
                         replicate_Z = self.sess.run(self.Z, feed_dict = {self.X:data_i, self.ages:ages_i})
                         if replicate_idx == 0:
