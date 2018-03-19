@@ -140,7 +140,7 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
         # then we plug those in to calculate the mean and sigma
         self.Z_mu[:, :self.k_age] = tf.exp(log_normal_mu_parameter + log_normal_sigma_parameter**2/2.0)
         self.Z_sigma[:, :self.k_age] = tf.sqrt(
-            tf.exp(log_normal_sigma_parameter**2 - 1) * tf.exp(2*log_normal_mu_parameter + log_normal_sigma_parameter**2))
+            (tf.exp(log_normal_sigma_parameter**2) - 1) * tf.exp(2*log_normal_mu_parameter + log_normal_sigma_parameter**2))
         
         return Z
     
