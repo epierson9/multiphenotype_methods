@@ -26,22 +26,125 @@ class VariationalLongitudinalRateOfAgingAutoencoder(VariationalRateOfAgingAutoen
                  sparsity_weighting=0,
                  aging_rate_scaling_factor=.1,
                  **kwargs):
-        super(VariationalLongitudinalRateOfAgingAutoencoder, self).__init__(**kwargs)     
+        super(VariationalLongitudinalRateOfAgingAutoencoder, self).__init__(k_age=k_age, 
+                                                                            **kwargs)     
         self.uses_longitudinal_data = True
+        
+    def init_network(self):
+        self.followup_ages = tf.placeholder("float32", None)
+        self.followup_X = tf.placeholder("float32", None)
+        super(VariationalLongitudinalRateOfAgingAutoencoder, self).init_network()
+        
+    def _train_epoch_with_longitudinal_data(self, regularization_weighting):
+        data = self.train_data
+        ages = self.train_ages
+        
+        train_longitudinal_X0 = self.train_longitudinal_X0 
+        train_longitudinal_X1 = self.train_longitudinal_X1
+        train_longitudinal_ages0 = self.train_longitudinal_ages0
+        train_longitudinal_ages1 = self.train_longitudinal_ages1
+        
+        # permute cross-sectional data
+        perm = np.arange(data.shape[0])
+        np.random.shuffle(perm)
+        data = data[perm, :]
+        ages = ages[perm]
+        train_batches = divide_idxs_into_batches(
+            np.arange(data.shape[0]), 
+            self.batch_size)
+        n_train_batches = len(train_batches)
+        
+        # permute longitudinal data
+        n_longitudinal_points = self.train_longitudinal_X0.shape[0]
+        perm = np.arange(n_longitudinal_points)
+        np.random.shuffle(perm)
+        longitudinal_X0 = self.train_longitudinal_X0[perm, :]
+        longitudinal_X1 = self.train_longitudinal_X1[perm, :]
+        longitudinal_ages0 = train_longitudinal_ages0[perm,]
+        longitudinal_ages1 = train_longitudinal_ages1[perm]
+        
+        # make sure we have the same number of train longitudinal batches and cross-sectional batches. 
+        train_longitudinal_batches = np.array_split(range(n_longitudinal_points), n_train_batches)
+        assert len(train_longitudinal_batches) == n_train_batches
+        assert sorted(list([a for b in train_longitudinal_batches for a in b])) == list(range(n_longitudinal_points))
+        
+        for i in range(n_train_batches):
+            cross_sectional_idxs = train_batches[i]
+            longitudinal_idxs = train_longitudinal_batches[i]
+            
+            # cross-sectional feed_dict
+            cross_sectional_feed_dict = self.fill_feed_dict_cross_sectional(cross_sectional_data=data,
+                                                                            regularization_weighting=regularization_weighting,
+                                                                            cross_sectional_ages=ages,
+                                                                            cross_sectional_idxs=cross_sectional_idxs)
+            # longitudinal feed dict
+            longitudinal_feed_dict = self.fill_feed_dict_longitudinal(longitudinal_X0=longitudinal_X0,
+                                                                      longitudinal_X1=longitudinal_X1,
+                                                                      longitudinal_ages0=longitudinal_ages0, 
+                                                                      longitudinal_ages1=longitudinal_ages1,
+                                                                      regularization_weighting=regularization_weighting,
+                                                                      longitudinal_idxs=longitudinal_idxs)
+            if np.random.random() < .5:
+                # randomize whether we do the cross-sectional or longitudinal step first 
+                # (just to be safe)
+                self.sess.run([self.optimizer], feed_dict=cross_sectional_feed_dict)
+                self.sess.run([self.optimizer], feed_dict=longitudinal_feed_dict)  
+            else:
+                self.sess.run([self.optimizer], feed_dict=longitudinal_feed_dict)  
+                self.sess.run([self.optimizer], feed_dict=cross_sectional_feed_dict)
+                
+    def fill_feed_dict_cross_sectional(self, 
+                       cross_sectional_data, 
+                       regularization_weighting,
+                       cross_sectional_ages, 
+                       cross_sectional_idxs):
+        assert cross_sectional_idxs is not None
+        
+        feed_dict = {
+                self.X:cross_sectional_data[cross_sectional_idxs, :], 
+                self.ages:cross_sectional_ages[cross_sectional_idxs], 
+                self.regularization_weighting:regularization_weighting
+        }
+        return feed_dict
+        
+    def fill_feed_dict_longitudinal(self, 
+                                    longitudinal_X0, 
+                                    longitudinal_X1, 
+                                    longitudinal_ages0, 
+                                    longitudinal_ages1,
+                                    regularization_weighting,
+                                    longitudinal_idxs):
+        
+        assert longitudinal_idxs is not None
+        assert longitudinal_X0 is not None
+        assert longitudinal_ages0 is not None
+        assert longitudinal_X1 is not None
+        assert longitudinal_ages1 is not None
+        
+        feed_dict = {
+                self.X:longitudinal_X0[longitudinal_idxs, :], 
+                self.ages:longitudinal_ages0[longitudinal_idxs], 
+                self.regularization_weighting:regularization_weighting,
+                self.followup_X:longitudinal_X1[longitudinal_idxs, :], 
+                self.followup_ages:longitudinal_ages1[longitudinal_idxs]
+        }
+        return feed_dict
+    
+    
         
     def get_loss(self):
         # uses X, ages, followup_X, followup_ages. 
-        if self.followup_X is None and self.followup_ages is None:
+        if self.followup_ages is not None:
             # in this case, we are just doing the standard cross-sectional loss (no followup data)
             return super(VariationalLongitudinalRateOfAgingAutoencoder, self).get_loss()
         else:
-            # i
+            # if we are doing longitudinal followup, things get more complicated.
             Z0 = self.encode(self.X, self.ages)
             
             # now project Z0 forward to get Z1. 
-            Z1 = deepcopy(Z0)
-            for k in range(self.k_age):
-                Z1['z%i' % k] = Z1['z%i' % k] * (1.0*self.followup_ages / self.ages)
+            Z1 = tf.concat([Z0[:, :self.k_age] * tf.reshape((1.0*self.followup_ages / self.ages), [-1, 1]), 
+                            Z0[:, self.k_age:]], 
+                           axis=1)
                
             # reconstruct X from Z0 and Z1. 
             Xr0 = self.decode(Z0)

@@ -24,17 +24,20 @@ class GeneralAutoencoder(DimReducer):
         non_linearity='relu', 
         batch_size=128,
         age_preprocessing_method='subtract_a_constant',
-        include_age_in_encoder_input=False,     
+        include_age_in_encoder_input=False,  
+        uses_longitudinal_data=False,
         regularization_weighting_schedule={'schedule_type':'constant', 'constant':1}):
 
         self.need_ages = False # whether ages are needed to compute loss or other quantities. 
         assert age_preprocessing_method in ['subtract_a_constant', 'divide_by_a_constant']
         self.age_preprocessing_method = age_preprocessing_method
-        self.include_age_in_encoder_input = include_age_in_encoder_input         
+        self.include_age_in_encoder_input = include_age_in_encoder_input   
         # include_age_in_encoder_input is whether age is used to approximate the posterior over Z. 
         # Eg, we need this for rate-of-aging autoencoder. 
         
         self.can_calculate_Z_mu = True # does the variable Z_mu make any sense for the model. 
+        
+        self.uses_longitudinal_data = False # does the model accomodate longitudinal data as well. 
         
         # How many epochs should pass before we evaluate and print out
         # the loss on the training/validation datasets?
@@ -71,13 +74,27 @@ class GeneralAutoencoder(DimReducer):
         self.optimization_method = tf.train.AdamOptimizer
         self.initialization_function = self.glorot_init
         self.all_losses_by_epoch = []
+        self.binary_feature_idxs = None
+        self.continuous_feature_idxs = None
+        self.feature_names = None
                     
     def data_preprocessing_function(self, df):
+        # this function is used to process multiple dataframes so make sure that they are in the same format
+        old_binary_feature_idxs = copy.deepcopy(self.binary_feature_idxs)
+        old_continuous_feature_idxs = copy.deepcopy(self.continuous_feature_idxs)
+        old_feature_names = copy.deepcopy(self.feature_names)
+        
         X, self.binary_feature_idxs, self.continuous_feature_idxs, self.feature_names = \
             partition_dataframe_into_binary_and_continuous(df)
         print("Number of continuous features: %i; binary features %i" % (
             len(self.continuous_feature_idxs), 
             len(self.binary_feature_idxs)))
+        if old_binary_feature_idxs is not None:
+            assert list(self.binary_feature_idxs) == list(old_binary_feature_idxs)
+        if old_continuous_feature_idxs is not None:
+            assert list(self.continuous_feature_idxs) == list(old_continuous_feature_idxs)
+        if old_feature_names is not None:
+            assert list(self.feature_names) == list(old_feature_names)
         
         return X
         
@@ -145,7 +162,13 @@ class GeneralAutoencoder(DimReducer):
     def combine_loss_components(self, binary_loss, continuous_loss, regularization_loss):
         return binary_loss + continuous_loss + self.regularization_weighting * regularization_loss
 
-    def fit(self, train_df, valid_df):
+    def fit(self, 
+            train_df, 
+            valid_df, 
+            train_longitudinal_df0=None, 
+            train_longitudinal_df1=None, 
+            valid_longitudinal_0=None, 
+            valid_longitudinal_1=None):
         print("Fitting model using method %s." % self.__class__.__name__)
         
         assert train_df.shape[1] == valid_df.shape[1]
@@ -155,12 +178,34 @@ class GeneralAutoencoder(DimReducer):
         valid_data = self.data_preprocessing_function(valid_df)
         
         train_ages = None
-        valid_ages = None                
+        valid_ages = None
         if self.need_ages:
             train_ages = self.get_ages(train_df)
             valid_ages = self.get_ages(valid_df)
             
-        self._fit_from_processed_data(train_data, valid_data, train_ages, valid_ages)
+        # preprocess longitudinal data
+        train_longitudinal_X0 = None
+        train_longitudinal_X1 = None
+        train_longitudinal_ages0 = None
+        train_longitudinal_ages1 = None
+        if self.uses_longitudinal_data:
+            assert train_longitudinal_df0 is not None
+            assert train_longitudinal_df1 is not None
+            assert len(train_longitudinal_df0) == len(train_longitudinal_df1)
+            train_longitudinal_X0 = self.data_preprocessing_function(train_longitudinal_df0)
+            train_longitudinal_X1 = self.data_preprocessing_function(train_longitudinal_df1)
+            train_longitudinal_ages0 = self.get_ages(train_longitudinal_df0)
+            train_longitudinal_ages1 = self.get_ages(train_longitudinal_df1)
+            
+        self._fit_from_processed_data(train_data=train_data, 
+                                      valid_data=valid_data, 
+                                      train_ages=train_ages, 
+                                      valid_ages=valid_ages, 
+                                      train_longitudinal_X0=train_longitudinal_X0, 
+                                      train_longitudinal_X1=train_longitudinal_X1, 
+                                      train_longitudinal_ages0=train_longitudinal_ages0, 
+                                      train_longitudinal_ages1=train_longitudinal_ages1)
+                                      
     
     def get_regularization_weighting_for_epoch(self, epoch):
         if self.regularization_weighting_schedule['schedule_type'] == 'constant':
@@ -206,7 +251,15 @@ class GeneralAutoencoder(DimReducer):
             decorrelated_data[:, i] = decorrelated_data[:, i] - slope * ages - intercept
         return decorrelated_data
     
-    def _fit_from_processed_data(self, train_data, valid_data, train_ages=None, valid_ages=None):
+    def _fit_from_processed_data(self, 
+                                 train_data, 
+                                 valid_data, 
+                                 train_ages=None, 
+                                 valid_ages=None, 
+                                 train_longitudinal_X0=None, 
+                                 train_longitudinal_X1=None, 
+                                 train_longitudinal_ages0=None, 
+                                 train_longitudinal_ages1=None):
         """
         train_data and valid_data are data matrices
         """
@@ -230,7 +283,14 @@ class GeneralAutoencoder(DimReducer):
         
         print("Train size %i; valid size %i" % (
             self.train_data.shape[0], self.valid_data.shape[0]))
-                
+        
+        if self.uses_longitudinal_data:
+            self.train_longitudinal_X0 = train_longitudinal_X0
+            self.train_longitudinal_X1 = train_longitudinal_X1
+            self.train_longitudinal_ages0 = train_longitudinal_ages0
+            self.train_longitudinal_ages1 = train_longitudinal_ages1
+            print("LONGITUDINAL train data size %i" % self.train_longitudinal_X0.shape[0])
+        
         self.graph = tf.Graph()
         with self.graph.as_default():
             tf.set_random_seed(self.random_seed)
@@ -268,10 +328,12 @@ class GeneralAutoencoder(DimReducer):
             for epoch in range(self.max_epochs):
                 t0 = time.time()
                 regularization_weighting_for_epoch = self.get_regularization_weighting_for_epoch(epoch)
-                self._train_epoch(self.train_data, 
-                                  self.train_ages, 
-                                  regularization_weighting_for_epoch, 
-                                  self.age_adjusted_train_data)
+                
+                if not self.uses_longitudinal_data:
+                    self._train_epoch(regularization_weighting_for_epoch)
+                    
+                else:
+                    self._train_epoch_with_longitudinal_data(regularization_weighting_for_epoch)
                 
                 if (epoch % self.num_epochs_before_eval == 0) or (epoch == self.max_epochs - 1):
                     
@@ -438,7 +500,13 @@ class GeneralAutoencoder(DimReducer):
         return mean_combined_loss, mean_binary_loss, mean_continuous_loss, mean_reg_loss
 
 
-    def _train_epoch(self, data, ages, regularization_weighting, age_adjusted_data):
+    def _train_epoch(self, regularization_weighting):
+        # This function takes very few input arguments because we assume it just uses train data, 
+        # which is already stored as fields of the object. 
+        data = self.train_data
+        ages = self.train_ages
+        age_adjusted_data = self.age_adjusted_train_data
+        
         if self.need_ages:
             assert ages is not None
 
@@ -459,7 +527,11 @@ class GeneralAutoencoder(DimReducer):
                                             idxs=idxs, 
                                             age_adjusted_data=age_adjusted_data)
             self.sess.run([self.optimizer], feed_dict=feed_dict)
-
+            
+    def _train_epoch_with_longitudinal_data(self, regularization_weighting):
+        # Autoencoders which make use of longitudinal data should implement this function. 
+        raise NotImplementedError
+            
 
     def reconstruct_data(self, Z_df):
         """
