@@ -29,9 +29,9 @@ class VariationalLongitudinalRateOfAgingAutoencoder(VariationalRateOfAgingAutoen
                  longitudinal_loss_weighting_factor=1,
                  longitudinal_batch_size=128,
                  **kwargs):
-        super(VariationalLongitudinalRateOfAgingAutoencoder, self).__init__(**kwargs)  
+        super(VariationalLongitudinalRateOfAgingAutoencoder, self).__init__(uses_longitudinal_data=True, 
+                                                                            **kwargs)  
         
-        self.uses_longitudinal_data = True
         self.longitudinal_loss_weighting_factor = longitudinal_loss_weighting_factor
         self.longitudinal_batch_size = longitudinal_batch_size
          
