@@ -26,6 +26,7 @@ class SparseCorrelationVariationalAgeAutoencoder(VariationalAgeAutoencoder):
 
         super(SparseCorrelationVariationalAgeAutoencoder, self).__init__(k_age = k_age, 
                                                         Z_age_coef = Z_age_coef, 
+                                                        batch_size=batch_size,
                                                         **kwargs)   
         self.sparsity_weighting = sparsity_weighting # weighting on the L1 X-Z correlation matrix loss. 
         self.use_age_adjusted_X = use_age_adjusted_X # if True, computes correlations with the age state using X that has been decorrelated with age. 

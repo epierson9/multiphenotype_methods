@@ -128,19 +128,24 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
         # We generate Z_mu and Z_sigma because other classes make use of them.  
         # both of these are calculable but a little convoluted.
         
-        # for non-age components, Z_mu and Z_sigma are just encoder_mu and encoder_sigma, as before. 
-        self.Z_mu = self.encoder_mu
-        self.Z_sigma = self.encoder_sigma
-        
         # for age components, we use the expressions here: https://en.wikipedia.org/wiki/Log-normal_distribution
-        # first we compute the parameters of the log-normal distribution, which requires multiplying by the scaling factor
+        # first we compute the parameters of the log-normal distribution, which requires multiplying by the scaling factor and by age. 
         log_normal_mu_parameter = self.encoder_mu[:, :self.k_age] * self.aging_rate_scaling_factor
         log_normal_sigma_parameter = self.encoder_sigma[:, :self.k_age] * self.aging_rate_scaling_factor
         
-        # then we plug those in to calculate the mean and sigma
-        self.Z_mu[:, :self.k_age] = tf.exp(log_normal_mu_parameter + log_normal_sigma_parameter**2/2.0)
-        self.Z_sigma[:, :self.k_age] = tf.sqrt(
+        # then we plug those in to calculate the mean and sigma of the rate of aging. 
+        rate_of_aging_mu = tf.exp(log_normal_mu_parameter + log_normal_sigma_parameter**2/2.0)
+        rate_of_aging_sigma = tf.sqrt(
             (tf.exp(log_normal_sigma_parameter**2) - 1) * tf.exp(2*log_normal_mu_parameter + log_normal_sigma_parameter**2))
+        
+        # finally, multiply by age to get age_Z_mu and age_Z_sigma (since age_Z = rate_of_aging * age)
+        age_Z_mu = rate_of_aging_mu * tf.reshape(ages, [-1, 1])
+        age_Z_sigma = rate_of_aging_sigma * tf.reshape(ages, [-1, 1])
+        
+        # for non-age components, Z_mu and Z_sigma are just encoder_mu and encoder_sigma, as before. 
+        # Concatenate to produce the final tensors. 
+        self.Z_mu = tf.concat([age_Z_mu, self.encoder_mu[:, self.k_age:]], axis=1)
+        self.Z_sigma = tf.concat([age_Z_sigma, self.encoder_sigma[:, self.k_age:]], axis=1)
         
         return Z
     
@@ -218,10 +223,8 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
         
         return X_with_logits
     
-    def get_loss(self):
-        # The KL loss is just the KL loss for N(0, I) computed on encoder_mu and encoder_sigma. 
-        _, binary_loss, continuous_loss, _ = super(VariationalRateOfAgingAutoencoder, self).get_loss()   
-
+    def get_regularization_loss(self):
+        # Pull this out into a method because subclasses use it. 
         kl_div_loss = -.5 * (
             1 + 
             2 * tf.log(self.encoder_sigma) - tf.square(self.encoder_mu) - tf.square(self.encoder_sigma))
@@ -237,7 +240,12 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
             regularization_loss = kl_div_loss + sparsity_loss * self.sparsity_weighting
         else:
             regularization_loss = kl_div_loss
-            
+        return regularization_loss
+        
+    def get_loss(self):
+        # The KL loss is just the KL loss for N(0, I) computed on encoder_mu and encoder_sigma. 
+        _, binary_loss, continuous_loss, _ = super(VariationalRateOfAgingAutoencoder, self).get_loss()   
+        regularization_loss = self.get_regularization_loss()
         combined_loss = self.combine_loss_components(binary_loss, continuous_loss, regularization_loss)
 
         return combined_loss, binary_loss, continuous_loss, regularization_loss

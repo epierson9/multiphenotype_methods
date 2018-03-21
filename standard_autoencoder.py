@@ -82,27 +82,9 @@ class StandardAutoencoder(GeneralAutoencoder):
         
         return X_with_logits
 
-
-    def get_loss(self):     
-        """
-        Uses self.X and self.Xr
-        """
-        X_binary, X_continuous = self.split_into_binary_and_continuous(self.X)
-        Xr_logits, Xr_continuous = self.split_into_binary_and_continuous(self.Xr)
-        
-        if len(self.binary_feature_idxs) == 0:
-            binary_loss = tf.zeros(1)
-        else:
-            binary_loss = tf.reduce_mean(
-                tf.reduce_sum(
-                    tf.nn.sigmoid_cross_entropy_with_logits(
-                        logits=Xr_logits, 
-                        labels=X_binary),
-                    axis=1),
-                axis=0)
-            # upweight binary loss by the binary loss weighting. 
-            binary_loss = self.binary_loss_weighting * binary_loss
-
+    def get_continuous_loss(self, X_continuous, Xr_continuous):
+        # Given the true values X_continuous and the reconstructed values Xr_continuous
+        # returns the continuous loss. 
         if len(self.continuous_feature_idxs) == 0:
             continuous_loss = tf.zeros(1)
         else:
@@ -124,6 +106,35 @@ class StandardAutoencoder(GeneralAutoencoder):
                             tf.square(X_continuous - Xr_continuous), 
                             axis=1),
                         axis=0))
+        return continuous_loss
+        
+    def get_binary_loss(self, X_binary, Xr_logits):
+        # Given the true values X_binary and the reconstructed values Xr_logits
+        # returns the binary loss.
+        
+        if len(self.binary_feature_idxs) == 0:
+            binary_loss = tf.zeros(1)
+        else:
+            binary_loss = tf.reduce_mean(
+                tf.reduce_sum(
+                    tf.nn.sigmoid_cross_entropy_with_logits(
+                        logits=Xr_logits, 
+                        labels=X_binary),
+                    axis=1),
+                axis=0)
+            # upweight binary loss by the binary loss weighting. 
+            binary_loss = self.binary_loss_weighting * binary_loss
+        return binary_loss
+        
+    def get_loss(self):     
+        """
+        Uses self.X and self.Xr. 
+        """
+        X_binary, X_continuous = self.split_into_binary_and_continuous(self.X)
+        Xr_logits, Xr_continuous = self.split_into_binary_and_continuous(self.Xr)
+        
+        binary_loss = self.get_binary_loss(X_binary, Xr_logits)
+        continuous_loss = self.get_continuous_loss(X_continuous, Xr_continuous)
 
         reg_loss = tf.zeros(1)
         combined_loss = self.combine_loss_components(binary_loss, continuous_loss, reg_loss)    

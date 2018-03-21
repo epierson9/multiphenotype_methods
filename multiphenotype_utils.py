@@ -159,7 +159,8 @@ def add_id(Z, df_with_id):
     assert 'individual_id' in df_with_id.columns
 
     results_df = pd.DataFrame(Z)
-    results_df.loc[:, 'individual_id'] = df_with_id.loc[:, 'individual_id'].values
+    results_df.index = list(df_with_id.index) # make sure the two dataframes have the same index. 
+    results_df.loc[:, 'individual_id'] = df_with_id.loc[:, 'individual_id'].values # similarly with individual id. 
     results_df = move_last_col_to_first(results_df)
     return results_df
 
