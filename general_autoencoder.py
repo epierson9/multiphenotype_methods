@@ -166,9 +166,7 @@ class GeneralAutoencoder(DimReducer):
             train_df, 
             valid_df, 
             train_longitudinal_df0=None, 
-            train_longitudinal_df1=None, 
-            valid_longitudinal_0=None, 
-            valid_longitudinal_1=None):
+            train_longitudinal_df1=None):
         print("Fitting model using method %s." % self.__class__.__name__)
         
         assert train_df.shape[1] == valid_df.shape[1]
@@ -308,8 +306,12 @@ class GeneralAutoencoder(DimReducer):
                 
             self.Xr = self.decode(self.Z)
             self.combined_loss, self.binary_loss, self.continuous_loss, self.reg_loss = self.get_loss()
-
             self.optimizer = self.optimization_method(learning_rate=self.learning_rate).minimize(self.combined_loss)
+            if self.uses_longitudinal_data:
+                self.combined_longitudinal_loss, self.binary_longitudinal_loss, self.continuous_longitudinal_loss, self.reg_longitudinal_loss = self.get_longitudinal_loss()
+                self.longitudinal_optimizer = self.optimization_method(learning_rate=self.learning_rate).minimize(self.combined_longitudinal_loss)
+                
+            
             init = tf.global_variables_initializer()
             
             # with tf.Session() as self.sess:
@@ -328,13 +330,9 @@ class GeneralAutoencoder(DimReducer):
             for epoch in range(self.max_epochs):
                 t0 = time.time()
                 regularization_weighting_for_epoch = self.get_regularization_weighting_for_epoch(epoch)
-                
-                if not self.uses_longitudinal_data:
-                    self._train_epoch(regularization_weighting_for_epoch)
+ 
+                self._train_epoch(regularization_weighting_for_epoch)
                     
-                else:
-                    self._train_epoch_with_longitudinal_data(regularization_weighting_for_epoch)
-                
                 if (epoch % self.num_epochs_before_eval == 0) or (epoch == self.max_epochs - 1):
                     
                     train_mean_combined_loss, train_mean_binary_loss, \
