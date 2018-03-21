@@ -26,15 +26,14 @@ class VariationalLongitudinalRateOfAgingAutoencoder(VariationalRateOfAgingAutoen
     """    
     
     def __init__(self,
-                 k_age,
-                 sparsity_weighting=0,
-                 aging_rate_scaling_factor=.1,
                  longitudinal_loss_weighting_factor=1,
+                 longitudinal_batch_size=128,
                  **kwargs):
-        super(VariationalLongitudinalRateOfAgingAutoencoder, self).__init__(k_age=k_age, 
-                                                                            **kwargs)     
+        super(VariationalLongitudinalRateOfAgingAutoencoder, self).__init__(**kwargs)  
+        
         self.uses_longitudinal_data = True
         self.longitudinal_loss_weighting_factor = longitudinal_loss_weighting_factor
+        self.longitudinal_batch_size = longitudinal_batch_size
          
     def init_network(self):
         # define two additional placeholders to store the ages and values at followup. 
@@ -61,7 +60,7 @@ class VariationalLongitudinalRateOfAgingAutoencoder(VariationalRateOfAgingAutoen
             np.arange(data.shape[0]), 
             self.batch_size)
         n_cross_sectional_points = data.shape[0]
-        n_train_batches = len(train_batches)
+        n_cross_sectional_batches = len(train_batches)
         
         # permute longitudinal data
         n_longitudinal_points = self.train_longitudinal_X0.shape[0]
@@ -72,50 +71,59 @@ class VariationalLongitudinalRateOfAgingAutoencoder(VariationalRateOfAgingAutoen
         longitudinal_ages0 = train_longitudinal_ages0[perm]
         longitudinal_ages1 = train_longitudinal_ages1[perm]
         
-        # make sure we have the same number of train longitudinal batches and cross-sectional batches. 
-        # TODO: is this really what we want to do? Longitudinal batches are much smaller, introducing noise? 
-        train_longitudinal_batches = np.array_split(range(n_longitudinal_points), n_train_batches)
-        assert len(train_longitudinal_batches) == n_train_batches
-        assert sorted(list([a for b in train_longitudinal_batches for a in b])) == list(range(n_longitudinal_points))
+        # create longitudinal batches
+        train_longitudinal_batches = divide_idxs_into_batches(
+            np.arange(n_longitudinal_points), 
+            self.longitudinal_batch_size)
+        n_longitudinal_batches = len(train_longitudinal_batches)
         
-        # train, alternating between minimizing cross-sectional and longitudinal loss. 
+        print(("%i cross-sectional batches of (approximate) size %i; "+
+              "%i longitudinal batches of size %i") % (n_cross_sectional_batches,
+                                                       self.batch_size,
+                                                       n_longitudinal_batches, 
+                                                       self.longitudinal_batch_size))
+        
+        # generate a vector that indicates whether we're doing a longitudinal or 
+        # cross-sectional update at each step. 
+        batch_is_longitudinal = ([False for i in range(n_cross_sectional_batches)] + 
+                                 [True for i in range(n_longitudinal_batches)])
+        np.random.shuffle(batch_is_longitudinal)
+                                                                               
+        # train
         total_longitudinal_loss = 0
         total_cross_sectional_loss = 0
-        for i in range(n_train_batches):
-            cross_sectional_idxs = train_batches[i]
-            longitudinal_idxs = train_longitudinal_batches[i]
-            
-            # cross-sectional feed_dict
-            cross_sectional_feed_dict = self.fill_feed_dict(data=data,
-                                                            regularization_weighting=regularization_weighting,
-                                                            ages=ages,
-                                                            idxs=cross_sectional_idxs)
-            # longitudinal feed dict
-            longitudinal_feed_dict = self.fill_feed_dict_longitudinal(longitudinal_X0=longitudinal_X0,
-                                                                      longitudinal_X1=longitudinal_X1,
-                                                                      longitudinal_ages0=longitudinal_ages0, 
-                                                                      longitudinal_ages1=longitudinal_ages1,
-                                                                      regularization_weighting=regularization_weighting,
-                                                                      longitudinal_idxs=longitudinal_idxs)
-            if np.random.random() < .5:
-                # randomize whether we do the cross-sectional or longitudinal step first 
-                # (just to be safe)
-                _, batch_cross_sectional_loss = self.sess.run([self.optimizer, 
-                                                               self.combined_loss],
-                                                              feed_dict=cross_sectional_feed_dict)
-                _, batch_longitudinal_loss = self.sess.run([self.longitudinal_optimizer,
-                                                            self.combined_longitudinal_loss],
-                                                           feed_dict=longitudinal_feed_dict)  
-            else:
+        longitudinal_batch_idx = 0
+        cross_sectional_batch_idx = 0
+        for i in range(len(batch_is_longitudinal)):
+            if batch_is_longitudinal[i]:
+                longitudinal_idxs = train_longitudinal_batches[longitudinal_batch_idx]
+                longitudinal_feed_dict = self.fill_feed_dict_longitudinal(
+                    longitudinal_X0=longitudinal_X0,
+                    longitudinal_X1=longitudinal_X1,
+                    longitudinal_ages0=longitudinal_ages0,
+                    longitudinal_ages1=longitudinal_ages1,
+                    regularization_weighting=regularization_weighting,
+                    longitudinal_idxs=longitudinal_idxs)
                 _, batch_longitudinal_loss = self.sess.run([self.longitudinal_optimizer,
                                                             self.combined_longitudinal_loss],
                                                            feed_dict=longitudinal_feed_dict) 
+                total_longitudinal_loss = (total_longitudinal_loss 
+                                           + batch_longitudinal_loss * len(longitudinal_idxs))
+                longitudinal_batch_idx += 1
+            else:
+                cross_sectional_idxs = train_batches[cross_sectional_batch_idx]
+                cross_sectional_feed_dict = self.fill_feed_dict(
+                    data=data,
+                    regularization_weighting=regularization_weighting,
+                    ages=ages,
+                    idxs=cross_sectional_idxs)
                 _, batch_cross_sectional_loss = self.sess.run([self.optimizer, 
                                                                self.combined_loss],
                                                               feed_dict=cross_sectional_feed_dict)
-            total_longitudinal_loss = total_longitudinal_loss + batch_longitudinal_loss * len(longitudinal_idxs)
-            total_cross_sectional_loss = total_cross_sectional_loss + batch_cross_sectional_loss * len(cross_sectional_idxs)
-        
+                total_cross_sectional_loss = (total_cross_sectional_loss 
+                                              + batch_cross_sectional_loss * len(cross_sectional_idxs))
+                cross_sectional_batch_idx += 1
+                 
         total_cross_sectional_loss = total_cross_sectional_loss / n_cross_sectional_points
         total_longitudinal_loss = total_longitudinal_loss / n_longitudinal_points
         

@@ -26,18 +26,20 @@ class GeneralAutoencoder(DimReducer):
         age_preprocessing_method='subtract_a_constant',
         include_age_in_encoder_input=False,  
         uses_longitudinal_data=False,
+        can_calculate_Z_mu=True,
+        need_ages=False,
         regularization_weighting_schedule={'schedule_type':'constant', 'constant':1}):
 
-        self.need_ages = False # whether ages are needed to compute loss or other quantities. 
+        self.need_ages = need_ages # whether ages are needed to compute loss or other quantities. 
         assert age_preprocessing_method in ['subtract_a_constant', 'divide_by_a_constant']
         self.age_preprocessing_method = age_preprocessing_method
-        self.include_age_in_encoder_input = include_age_in_encoder_input   
+        self.include_age_in_encoder_input = include_age_in_encoder_input 
         # include_age_in_encoder_input is whether age is used to approximate the posterior over Z. 
         # Eg, we need this for rate-of-aging autoencoder. 
         
-        self.can_calculate_Z_mu = True # does the variable Z_mu make any sense for the model. 
+        self.can_calculate_Z_mu = can_calculate_Z_mu # does the variable Z_mu make any sense for the model. 
         
-        self.uses_longitudinal_data = False # does the model accomodate longitudinal data as well. 
+        self.uses_longitudinal_data = uses_longitudinal_data # does the model accomodate longitudinal data as well. 
         
         # How many epochs should pass before we evaluate and print out
         # the loss on the training/validation datasets?
