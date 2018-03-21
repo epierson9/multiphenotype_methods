@@ -130,13 +130,17 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
         
         # for age components, we use the expressions here: https://en.wikipedia.org/wiki/Log-normal_distribution
         # first we compute the parameters of the log-normal distribution, which requires multiplying by the scaling factor and by age. 
-        log_normal_mu_parameter = self.encoder_mu[:, :self.k_age] * self.aging_rate_scaling_factor * tf.reshape(ages, [-1, 1])
-        log_normal_sigma_parameter = self.encoder_sigma[:, :self.k_age] * self.aging_rate_scaling_factor * tf.reshape(ages, [-1, 1])
+        log_normal_mu_parameter = self.encoder_mu[:, :self.k_age] * self.aging_rate_scaling_factor
+        log_normal_sigma_parameter = self.encoder_sigma[:, :self.k_age] * self.aging_rate_scaling_factor
         
-        # then we plug those in to calculate the mean and sigma
-        age_Z_mu = tf.exp(log_normal_mu_parameter + log_normal_sigma_parameter**2/2.0)
-        age_Z_sigma = tf.sqrt(
+        # then we plug those in to calculate the mean and sigma of the rate of aging. 
+        rate_of_aging_mu = tf.exp(log_normal_mu_parameter + log_normal_sigma_parameter**2/2.0)
+        rate_of_aging_sigma = tf.sqrt(
             (tf.exp(log_normal_sigma_parameter**2) - 1) * tf.exp(2*log_normal_mu_parameter + log_normal_sigma_parameter**2))
+        
+        # finally, multiply by age to get age_Z_mu and age_Z_sigma (since age_Z = rate_of_aging * age)
+        age_Z_mu = rate_of_aging_mu * tf.reshape(ages, [-1, 1])
+        age_Z_sigma = rate_of_aging_sigma * tf.reshape(ages, [-1, 1])
         
         # for non-age components, Z_mu and Z_sigma are just encoder_mu and encoder_sigma, as before. 
         # Concatenate to produce the final tensors. 
