@@ -69,7 +69,7 @@ class VariationalLongitudinalRateOfAgingAutoencoder(VariationalRateOfAgingAutoen
         np.random.shuffle(perm)
         longitudinal_X0 = self.train_longitudinal_X0[perm, :]
         longitudinal_X1 = self.train_longitudinal_X1[perm, :]
-        longitudinal_ages0 = train_longitudinal_ages0[perm,]
+        longitudinal_ages0 = train_longitudinal_ages0[perm]
         longitudinal_ages1 = train_longitudinal_ages1[perm]
         
         # make sure we have the same number of train longitudinal batches and cross-sectional batches. 
@@ -122,8 +122,7 @@ class VariationalLongitudinalRateOfAgingAutoencoder(VariationalRateOfAgingAutoen
         print(("Cross-sectional loss: %2.3f; " + 
                "longitudinal loss: %2.3f; " + 
                "longitudinal weighting factor: %2.3f\n" + 
-               "(losses should be roughly on the same scale because they are per-example " + 
-              "although each longitudinal person has two timepoints, introducing a factor of 2.)") % (
+               "(losses should be roughly on the same scale because they are per-example)") % (
             total_cross_sectional_loss,
             total_longitudinal_loss, 
             self.longitudinal_loss_weighting_factor))
@@ -206,26 +205,8 @@ class VariationalLongitudinalRateOfAgingAutoencoder(VariationalRateOfAgingAutoen
         binary_loss = binary_loss_0 + binary_loss_1
         continuous_loss = continuous_loss_0 + continuous_loss_1
 
-        # KL div loss is the same for both timepoints because encoder_mu and encoder_sigma are the same for both. 
-        # TODO: is that assumption correct? Also, will encoder_sigma and encoder_mu be correctly calculated given self.X? 
-        kl_div_loss = -.5 * (
-            1 + 
-            2 * tf.log(self.encoder_sigma) - tf.square(self.encoder_mu) - tf.square(self.encoder_sigma))
-        kl_div_loss = tf.reduce_mean(
-            tf.reduce_sum(
-                kl_div_loss,
-                axis=1),
-            axis=0)
-
-        # add in a sparsity loss: L1 penalty on the age state decoder. 
-        if self.sparsity_weighting > 0:
-            sparsity_loss = tf.reduce_sum(tf.abs(self.weights['decoder_Z_age_h0']))
-            regularization_loss = kl_div_loss + sparsity_loss * self.sparsity_weighting
-        else:
-            regularization_loss = kl_div_loss
-
-        # multiply regularization loss by two because we are actually evaluating at two timepoints for each person. 
-        regularization_loss = regularization_loss * 2
+        # Regularization loss is the same as the superclass, rate-of-aging autoencoder. 
+        regularization_loss = self.get_regularization_loss()
         
         # multiply all loss components by longitudinal loss weighting factor
         binary_loss = binary_loss * self.longitudinal_loss_weighting_factor

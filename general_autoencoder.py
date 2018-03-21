@@ -107,7 +107,7 @@ class GeneralAutoencoder(DimReducer):
         X = self.data_preprocessing_function(df)
         ages = self.get_ages(df)
         Z = self._get_projections_from_processed_data(X, ages, project_onto_mean, **projection_kwargs)
-        Z_df = add_id(Z, df)
+        Z_df = add_id(Z, df) # Z_df and df will have the same id and individual_id. 
         Z_df.columns = ['individual_id'] + ['z%s' % i for i in range(Z.shape[1])]
 
         return Z_df            
@@ -165,7 +165,7 @@ class GeneralAutoencoder(DimReducer):
     def fit(self, 
             train_df, 
             valid_df, 
-            train_longitudinal_df0=None, 
+            train_longitudinal_df0=None, # longitudinal data at the first and second timepoint, respectively. 
             train_longitudinal_df1=None):
         print("Fitting model using method %s." % self.__class__.__name__)
         
@@ -194,6 +194,9 @@ class GeneralAutoencoder(DimReducer):
             train_longitudinal_X1 = self.data_preprocessing_function(train_longitudinal_df1)
             train_longitudinal_ages0 = self.get_ages(train_longitudinal_df0)
             train_longitudinal_ages1 = self.get_ages(train_longitudinal_df1)
+        else:
+            assert train_longitudinal_df0 is None
+            assert train_longitudinal_df1 is None
             
         self._fit_from_processed_data(train_data=train_data, 
                                       valid_data=valid_data, 
@@ -524,12 +527,7 @@ class GeneralAutoencoder(DimReducer):
                                             ages=ages, 
                                             idxs=idxs, 
                                             age_adjusted_data=age_adjusted_data)
-            self.sess.run([self.optimizer], feed_dict=feed_dict)
-            
-    def _train_epoch_with_longitudinal_data(self, regularization_weighting):
-        # Autoencoders which make use of longitudinal data should implement this function. 
-        raise NotImplementedError
-            
+            self.sess.run([self.optimizer], feed_dict=feed_dict)           
 
     def reconstruct_data(self, Z_df):
         """

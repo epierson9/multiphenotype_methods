@@ -55,7 +55,7 @@ class DimReducer(object):
         print("Getting projections using method %s." % self.__class__.__name__)
         X = self.data_preprocessing_function(df)
         Z = self._get_projections_from_processed_data(X, **projection_kwargs)
-        Z_df = add_id(Z, df)
+        Z_df = add_id(Z, df) # Z_df will have the same index and individual id as df. 
         Z_df.columns = ['individual_id'] + ['z%s' % i for i in range(Z.shape[1])]
 
         return Z_df

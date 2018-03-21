@@ -219,10 +219,8 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
         
         return X_with_logits
     
-    def get_loss(self):
-        # The KL loss is just the KL loss for N(0, I) computed on encoder_mu and encoder_sigma. 
-        _, binary_loss, continuous_loss, _ = super(VariationalRateOfAgingAutoencoder, self).get_loss()   
-
+    def get_regularization_loss(self):
+        # Pull this out into a method because subclasses use it. 
         kl_div_loss = -.5 * (
             1 + 
             2 * tf.log(self.encoder_sigma) - tf.square(self.encoder_mu) - tf.square(self.encoder_sigma))
@@ -238,7 +236,12 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
             regularization_loss = kl_div_loss + sparsity_loss * self.sparsity_weighting
         else:
             regularization_loss = kl_div_loss
-            
+        return regularization_loss
+        
+    def get_loss(self):
+        # The KL loss is just the KL loss for N(0, I) computed on encoder_mu and encoder_sigma. 
+        _, binary_loss, continuous_loss, _ = super(VariationalRateOfAgingAutoencoder, self).get_loss()   
+        regularization_loss = self.get_regularization_loss()
         combined_loss = self.combine_loss_components(binary_loss, continuous_loss, regularization_loss)
 
         return combined_loss, binary_loss, continuous_loss, regularization_loss
