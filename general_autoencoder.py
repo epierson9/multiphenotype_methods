@@ -299,10 +299,16 @@ class GeneralAutoencoder(DimReducer):
             tf.set_random_seed(self.random_seed)
             np.random.seed(self.random_seed)
 
-            self.X = tf.placeholder("float32", [None, len(self.feature_names)])
-            self.age_adjusted_X = tf.placeholder("float32", [None, len(self.feature_names)])
-            self.ages = tf.placeholder("float32", None)
-            self.regularization_weighting = tf.placeholder("float32")
+            self.X = tf.placeholder(dtype="float32", 
+                                    shape=[None, len(self.feature_names)], 
+                                    name='X')
+            self.age_adjusted_X = tf.placeholder(dtype="float32", 
+                                                 shape=[None, len(self.feature_names)], 
+                                                 name='age_adjusted_X')
+            self.ages = tf.placeholder(dtype="float32", 
+                                       shape=None, 
+                                       name='ages')
+            self.regularization_weighting = tf.placeholder(dtype="float32", name='regularization_weighting')
             self.init_network()
             if self.include_age_in_encoder_input:
                 self.Z = self.encode(self.X, self.ages)
@@ -384,6 +390,7 @@ class GeneralAutoencoder(DimReducer):
                     if 'encoder_h0_sigma' in self.weights:
                         # make sure latent state for VAE looks ok by printing out diagnostics
                         if self.include_age_in_encoder_input:
+                            sampled_Z = self.sess.run([self.Z], feed_dict = {self.X:self.train_data, self.ages:self.train_ages})
                             sampled_Z, mu, sigma = self.sess.run([self.Z, self.Z_mu, self.Z_sigma], feed_dict = {self.X:self.train_data, self.ages:self.train_ages})
                         else:
                             sampled_Z, mu, sigma = self.sess.run([self.Z, self.Z_mu, self.Z_sigma], feed_dict = {self.X:self.train_data})
