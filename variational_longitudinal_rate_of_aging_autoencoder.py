@@ -36,23 +36,20 @@ class VariationalLongitudinalRateOfAgingAutoencoder(VariationalRateOfAgingAutoen
         self.longitudinal_batch_size = longitudinal_batch_size
          
     def init_network(self):
-        # define two additional placeholders to store the longitudinal ages and values.
-        
-        # it might be nicer to define longitudinal_ages0, longitudinal_ages1, but this breaks the current code.
-        
-        #self.longitudinal_ages0 = tf.placeholder("float32", None, name='longitudinal_ages0')
-        #self.longitudinal_X0 = tf.placeholder("float32", None, name='longitudinal_X0') 
+        # define two additional placeholders to store the followup longitudinal ages and values
         self.longitudinal_ages1 = tf.placeholder("float32", None, name='longitudinal_ages1')
-        
         self.longitudinal_X1 = tf.placeholder("float32", None, name='longitudinal_X1')
         super(VariationalLongitudinalRateOfAgingAutoencoder, self).init_network()
     
         
     def _train_epoch(self, regularization_weighting):
-        # store the data we need in local variables. 
+        # store the data we need in local variables.
+        # cross-sectional data.
         data = self.train_data
         ages = self.train_ages
         age_adjusted_data = self.age_adjusted_train_data
+        
+        # longitudinal data. 
         train_longitudinal_X0 = self.train_longitudinal_X0 
         train_longitudinal_X1 = self.train_longitudinal_X1
         train_longitudinal_ages0 = self.train_longitudinal_ages0
@@ -170,10 +167,11 @@ class VariationalLongitudinalRateOfAgingAutoencoder(VariationalRateOfAgingAutoen
     def get_longitudinal_loss(self):
         # loss function for longitudinal data. 
         
-        # compute initial position in the latent space. 
-        Z0 = self.encode(self.X, self.ages)
+        # initial position in the latent space (at timepoint 0) is just self.Z. 
+        Z0 = self.Z
             
-        # now project Z0 forward to get Z1. This requires multiplying the age components by longitudinal_ages1 / longitudinal_ages0
+        # now project Z0 forward to get Z1. 
+        # This requires multiplying the age components by longitudinal_ages1 / ages
         Z1 = tf.concat([Z0[:, :self.k_age] * tf.reshape((1.0*self.longitudinal_ages1 / self.ages), [-1, 1]), # broadcasting
                         Z0[:, self.k_age:]], 
                        axis=1)
