@@ -36,12 +36,15 @@ class VariationalLongitudinalRateOfAgingAutoencoder(VariationalRateOfAgingAutoen
         self.longitudinal_batch_size = longitudinal_batch_size
          
     def init_network(self):
-        # define four additional placeholders to store the longitudinal ages and values. 
-        # 0 and 1 denote initial and followup visits, respectively. 
-        self.longitudinal_ages0 = tf.placeholder("float32", None)
-        self.longitudinal_ages1 = tf.placeholder("float32", None)
-        self.longitudinal_X0 = tf.placeholder("float32", None)
-        self.longitudinal_X1 = tf.placeholder("float32", None)
+        # define two additional placeholders to store the longitudinal ages and values.
+        
+        # it might be nicer to define longitudinal_ages0, longitudinal_ages1, but this breaks the current code.
+        
+        #self.longitudinal_ages0 = tf.placeholder("float32", None, name='longitudinal_ages0')
+        #self.longitudinal_X0 = tf.placeholder("float32", None, name='longitudinal_X0') 
+        self.longitudinal_ages1 = tf.placeholder("float32", None, name='longitudinal_ages1')
+        
+        self.longitudinal_X1 = tf.placeholder("float32", None, name='longitudinal_X1')
         super(VariationalLongitudinalRateOfAgingAutoencoder, self).init_network()
     
         
@@ -49,6 +52,7 @@ class VariationalLongitudinalRateOfAgingAutoencoder(VariationalRateOfAgingAutoen
         # store the data we need in local variables. 
         data = self.train_data
         ages = self.train_ages
+        age_adjusted_data = self.age_adjusted_train_data
         train_longitudinal_X0 = self.train_longitudinal_X0 
         train_longitudinal_X1 = self.train_longitudinal_X1
         train_longitudinal_ages0 = self.train_longitudinal_ages0
@@ -119,7 +123,8 @@ class VariationalLongitudinalRateOfAgingAutoencoder(VariationalRateOfAgingAutoen
                     data=data,
                     regularization_weighting=regularization_weighting,
                     ages=ages,
-                    idxs=cross_sectional_idxs)
+                    idxs=cross_sectional_idxs, 
+                    age_adjusted_data=age_adjusted_data)
                 _, batch_cross_sectional_loss = self.sess.run([self.optimizer, 
                                                                self.combined_loss],
                                                               feed_dict=cross_sectional_feed_dict)
@@ -137,7 +142,7 @@ class VariationalLongitudinalRateOfAgingAutoencoder(VariationalRateOfAgingAutoen
             total_cross_sectional_loss,
             total_longitudinal_loss, 
             self.longitudinal_loss_weighting_factor))
-        
+
     def fill_feed_dict_longitudinal(self, 
                                     longitudinal_X0, 
                                     longitudinal_X1, 
@@ -154,8 +159,8 @@ class VariationalLongitudinalRateOfAgingAutoencoder(VariationalRateOfAgingAutoen
         assert longitudinal_ages1 is not None
         
         feed_dict = {
-                self.longitudinal_X0:longitudinal_X0[longitudinal_idxs, :], 
-                self.longitudinal_ages0:longitudinal_ages0[longitudinal_idxs], 
+                self.X:longitudinal_X0[longitudinal_idxs, :], 
+                self.ages:longitudinal_ages0[longitudinal_idxs], 
                 self.regularization_weighting:regularization_weighting,
                 self.longitudinal_X1:longitudinal_X1[longitudinal_idxs, :], 
                 self.longitudinal_ages1:longitudinal_ages1[longitudinal_idxs]
@@ -166,10 +171,10 @@ class VariationalLongitudinalRateOfAgingAutoencoder(VariationalRateOfAgingAutoen
         # loss function for longitudinal data. 
         
         # compute initial position in the latent space. 
-        Z0 = self.encode(self.longitudinal_X0, self.longitudinal_ages0)
+        Z0 = self.encode(self.X, self.ages)
             
         # now project Z0 forward to get Z1. This requires multiplying the age components by longitudinal_ages1 / longitudinal_ages0
-        Z1 = tf.concat([Z0[:, :self.k_age] * tf.reshape((1.0*self.longitudinal_ages1 / self.longitudinal_ages0), [-1, 1]), # broadcasting
+        Z1 = tf.concat([Z0[:, :self.k_age] * tf.reshape((1.0*self.longitudinal_ages1 / self.ages), [-1, 1]), # broadcasting
                         Z0[:, self.k_age:]], 
                        axis=1)
 
@@ -182,7 +187,7 @@ class VariationalLongitudinalRateOfAgingAutoencoder(VariationalRateOfAgingAutoen
         Xr1_logits, Xr1_continuous = self.split_into_binary_and_continuous(Xr1)
 
         # do the same for the true data
-        X0_binary, X0_continuous = self.split_into_binary_and_continuous(self.longitudinal_X0)
+        X0_binary, X0_continuous = self.split_into_binary_and_continuous(self.X)
         X1_binary, X1_continuous = self.split_into_binary_and_continuous(self.longitudinal_X1)
 
         # compute losses
