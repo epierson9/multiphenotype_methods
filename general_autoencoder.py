@@ -390,7 +390,6 @@ class GeneralAutoencoder(DimReducer):
                     if 'encoder_h0_sigma' in self.weights:
                         # make sure latent state for VAE looks ok by printing out diagnostics
                         if self.include_age_in_encoder_input:
-                            sampled_Z = self.sess.run([self.Z], feed_dict = {self.X:self.train_data, self.ages:self.train_ages})
                             sampled_Z, mu, sigma = self.sess.run([self.Z, self.Z_mu, self.Z_sigma], feed_dict = {self.X:self.train_data, self.ages:self.train_ages})
                         else:
                             sampled_Z, mu, sigma = self.sess.run([self.Z, self.Z_mu, self.Z_sigma], feed_dict = {self.X:self.train_data})
