@@ -26,6 +26,7 @@ class SparseCorrelationVariationalAgeAutoencoder(VariationalAgeAutoencoder):
 
         super(SparseCorrelationVariationalAgeAutoencoder, self).__init__(k_age = k_age, 
                                                         Z_age_coef = Z_age_coef, 
+                                                        batch_size=batch_size,
                                                         **kwargs)   
         self.sparsity_weighting = sparsity_weighting # weighting on the L1 X-Z correlation matrix loss. 
         self.use_age_adjusted_X = use_age_adjusted_X # if True, computes correlations with the age state using X that has been decorrelated with age. 
@@ -69,21 +70,23 @@ class SparseCorrelationVariationalAgeAutoencoder(VariationalAgeAutoencoder):
         sparsity_loss = tf.reduce_sum(clipped_pearsonr_matrix)
         return sparsity_loss
     
-    def get_loss(self):
+    def get_loss(self, X, Xr):
         """
-        Adds a correlation sparsity loss to the regularization term. 
+        Adds a correlation sparsity loss to the regularization term.
+        TODO: The use of self.age_adjusted_X here is pretty bad code-design-wise,
+        since we pass in X as an argument. Revisit when we start using this model again.
         """
-        _, binary_loss, continuous_loss, kl_div_loss = super(SparseCorrelationVariationalAgeAutoencoder, self).get_loss()   
+        _, binary_loss, continuous_loss, kl_div_loss = super(SparseCorrelationVariationalAgeAutoencoder, self).get_loss(X, Xr)
         
         if self.use_age_adjusted_X:
             # for non-age states, use correlation with X to compute sparsity loss. 
             # for age states, use correlation with age_adjusted_X. 
-            sparsity_loss = self.compute_correlation_sparsity_loss(self.Z[:, self.k_age:], self.X)
+            sparsity_loss = self.compute_correlation_sparsity_loss(self.Z[:, self.k_age:], X)
             if self.k_age > 0:
                 sparsity_loss += self.compute_correlation_sparsity_loss(self.Z[:, :self.k_age], self.age_adjusted_X)
         else:
             # if we're not using age adjusted X for the age states, just compute the sparse correlation matrix with X. 
-            sparsity_loss = self.compute_correlation_sparsity_loss(self.Z, self.X)
+            sparsity_loss = self.compute_correlation_sparsity_loss(self.Z, X)
         
         regularization_loss = kl_div_loss + sparsity_loss * self.sparsity_weighting
         combined_loss = self.combine_loss_components(binary_loss, continuous_loss, regularization_loss)

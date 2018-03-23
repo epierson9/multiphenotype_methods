@@ -28,7 +28,7 @@ class MortalityWeightedVariationalAgeAutoencoder(VariationalAgeAutoencoder):
         # mortality_weighting_dict should be a dictionary whose keys are features and values are weights. 
         self.mortality_weighting_dict = mortality_weighting_dict
 
-    def get_loss(self):
+    def get_loss(self, X, Xr):
         """
         For each feature x_i, the loss is abs(beta_i * (Xr_i - X_i)). For binary features, Xr is \in [0, 1] 
         (ie, it is the predicted probability of the feature being on). The betas are given by the mortality weighting dict
@@ -42,8 +42,8 @@ class MortalityWeightedVariationalAgeAutoencoder(VariationalAgeAutoencoder):
             [np.abs(self.mortality_weighting_dict[self.feature_names[i]]) for i in self.binary_feature_idxs]).transpose().astype(np.float32)
         
         # partition reconstruction into binary and continuous features as usual. 
-        X_binary, X_continuous = self.split_into_binary_and_continuous(self.X)
-        Xr_logits, Xr_continuous = self.split_into_binary_and_continuous(self.Xr)
+        X_binary, X_continuous = self.split_into_binary_and_continuous(X)
+        Xr_logits, Xr_continuous = self.split_into_binary_and_continuous(Xr)
         
         # feed them logits through a logistic transform to put them on the probability scale. 
         Xr_binary_probabilities = tf.nn.sigmoid(Xr_logits)

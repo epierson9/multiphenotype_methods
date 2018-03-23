@@ -24,17 +24,22 @@ class GeneralAutoencoder(DimReducer):
         non_linearity='relu', 
         batch_size=128,
         age_preprocessing_method='subtract_a_constant',
-        include_age_in_encoder_input=False,     
+        include_age_in_encoder_input=False,  
+        uses_longitudinal_data=False,
+        can_calculate_Z_mu=True,
+        need_ages=False,
         regularization_weighting_schedule={'schedule_type':'constant', 'constant':1}):
 
-        self.need_ages = False # whether ages are needed to compute loss or other quantities. 
+        self.need_ages = need_ages # whether ages are needed to compute loss or other quantities. 
         assert age_preprocessing_method in ['subtract_a_constant', 'divide_by_a_constant']
         self.age_preprocessing_method = age_preprocessing_method
-        self.include_age_in_encoder_input = include_age_in_encoder_input         
+        self.include_age_in_encoder_input = include_age_in_encoder_input 
         # include_age_in_encoder_input is whether age is used to approximate the posterior over Z. 
         # Eg, we need this for rate-of-aging autoencoder. 
         
-        self.can_calculate_Z_mu = True # does the variable Z_mu make any sense for the model. 
+        self.can_calculate_Z_mu = can_calculate_Z_mu # does the variable Z_mu make any sense for the model. 
+        
+        self.uses_longitudinal_data = uses_longitudinal_data # does the model accomodate longitudinal data as well. 
         
         # How many epochs should pass before we evaluate and print out
         # the loss on the training/validation datasets?
@@ -71,13 +76,28 @@ class GeneralAutoencoder(DimReducer):
         self.optimization_method = tf.train.AdamOptimizer
         self.initialization_function = self.glorot_init
         self.all_losses_by_epoch = []
+        self.binary_feature_idxs = None
+        self.continuous_feature_idxs = None
+        self.feature_names = None
+        self.longitudinal_loss_weighting_factor = None
                     
     def data_preprocessing_function(self, df):
+        # this function is used to process multiple dataframes so make sure that they are in the same format
+        old_binary_feature_idxs = copy.deepcopy(self.binary_feature_idxs)
+        old_continuous_feature_idxs = copy.deepcopy(self.continuous_feature_idxs)
+        old_feature_names = copy.deepcopy(self.feature_names)
+        
         X, self.binary_feature_idxs, self.continuous_feature_idxs, self.feature_names = \
             partition_dataframe_into_binary_and_continuous(df)
         print("Number of continuous features: %i; binary features %i" % (
             len(self.continuous_feature_idxs), 
             len(self.binary_feature_idxs)))
+        if old_binary_feature_idxs is not None:
+            assert list(self.binary_feature_idxs) == list(old_binary_feature_idxs)
+        if old_continuous_feature_idxs is not None:
+            assert list(self.continuous_feature_idxs) == list(old_continuous_feature_idxs)
+        if old_feature_names is not None:
+            assert list(self.feature_names) == list(old_feature_names)
         
         return X
         
@@ -90,7 +110,7 @@ class GeneralAutoencoder(DimReducer):
         X = self.data_preprocessing_function(df)
         ages = self.get_ages(df)
         Z = self._get_projections_from_processed_data(X, ages, project_onto_mean, **projection_kwargs)
-        Z_df = add_id(Z, df)
+        Z_df = add_id(Z, df) # Z_df and df will have the same id and individual_id. 
         Z_df.columns = ['individual_id'] + ['z%s' % i for i in range(Z.shape[1])]
 
         return Z_df            
@@ -123,6 +143,12 @@ class GeneralAutoencoder(DimReducer):
     def get_loss():
         raise NotImplementedError
 
+    def get_longitudinal_loss():
+        raise NotImplementedError
+
+    def get_Z1_from_Z0(self, Z0):
+        raise NotImplementedError        
+        
     def age_preprocessing_function(self, ages):
         # two possibilities: either subtract a constant (to roughly zero-mean ages) 
         # or divide by a constant (to keep age roughly on the same-scale as the other features)
@@ -136,7 +162,7 @@ class GeneralAutoencoder(DimReducer):
             ages = ages / 70. 
         else:
             raise Exception("Invalid age processing method")
-        return ages
+        return np.array(ages)
     
     def get_ages(self, df):
         ages = np.array(df['age_sex___age'].values, dtype=np.float32)
@@ -145,7 +171,13 @@ class GeneralAutoencoder(DimReducer):
     def combine_loss_components(self, binary_loss, continuous_loss, regularization_loss):
         return binary_loss + continuous_loss + self.regularization_weighting * regularization_loss
 
-    def fit(self, train_df, valid_df, verbose=True):
+    def fit(self, 
+            train_df, 
+            valid_df, 
+            train_longitudinal_df0=None, # longitudinal data at the first and second timepoint, respectively. 
+            train_longitudinal_df1=None,
+            verbose=True):
+
         print("Fitting model using method %s." % self.__class__.__name__)
         
         assert train_df.shape[1] == valid_df.shape[1]
@@ -155,13 +187,38 @@ class GeneralAutoencoder(DimReducer):
         valid_data = self.data_preprocessing_function(valid_df)
         
         train_ages = None
-        valid_ages = None                
+        valid_ages = None
         if self.need_ages:
             train_ages = self.get_ages(train_df)
             valid_ages = self.get_ages(valid_df)
             
-        self._fit_from_processed_data(train_data, valid_data, train_ages, valid_ages, verbose=verbose)
-    
+        # preprocess longitudinal data
+        train_longitudinal_X0 = None
+        train_longitudinal_X1 = None
+        train_longitudinal_ages0 = None
+        train_longitudinal_ages1 = None
+        if self.uses_longitudinal_data:
+            assert train_longitudinal_df0 is not None
+            assert train_longitudinal_df1 is not None
+            assert len(train_longitudinal_df0) == len(train_longitudinal_df1)
+            train_longitudinal_X0 = self.data_preprocessing_function(train_longitudinal_df0)
+            train_longitudinal_X1 = self.data_preprocessing_function(train_longitudinal_df1)
+            train_longitudinal_ages0 = self.get_ages(train_longitudinal_df0)
+            train_longitudinal_ages1 = self.get_ages(train_longitudinal_df1)
+        else:
+            assert train_longitudinal_df0 is None
+            assert train_longitudinal_df1 is None
+            
+        self._fit_from_processed_data(train_data=train_data, 
+                                      valid_data=valid_data, 
+                                      train_ages=train_ages, 
+                                      valid_ages=valid_ages, 
+                                      train_longitudinal_X0=train_longitudinal_X0, 
+                                      train_longitudinal_X1=train_longitudinal_X1, 
+                                      train_longitudinal_ages0=train_longitudinal_ages0, 
+                                      train_longitudinal_ages1=train_longitudinal_ages1,
+                                      verbose=verbose)
+                                          
     def get_regularization_weighting_for_epoch(self, epoch, verbose=True):
         if self.regularization_weighting_schedule['schedule_type'] == 'constant':
             weighting = self.regularization_weighting_schedule['constant']
@@ -207,7 +264,15 @@ class GeneralAutoencoder(DimReducer):
             decorrelated_data[:, i] = decorrelated_data[:, i] - slope * ages - intercept
         return decorrelated_data
     
-    def _fit_from_processed_data(self, train_data, valid_data, train_ages=None, valid_ages=None,
+    def _fit_from_processed_data(self, 
+                                 train_data, 
+                                 valid_data, 
+                                 train_ages=None, 
+                                 valid_ages=None, 
+                                 train_longitudinal_X0=None, 
+                                 train_longitudinal_X1=None, 
+                                 train_longitudinal_ages0=None, 
+                                 train_longitudinal_ages1=None,
                                  verbose=True):
         """
         train_data and valid_data are data matrices
@@ -232,16 +297,29 @@ class GeneralAutoencoder(DimReducer):
         
         print("Train size %i; valid size %i" % (
             self.train_data.shape[0], self.valid_data.shape[0]))
-                
+        
+        if self.uses_longitudinal_data:
+            self.train_longitudinal_X0 = train_longitudinal_X0
+            self.train_longitudinal_X1 = train_longitudinal_X1
+            self.train_longitudinal_ages0 = train_longitudinal_ages0
+            self.train_longitudinal_ages1 = train_longitudinal_ages1
+            print("LONGITUDINAL train data size %i" % self.train_longitudinal_X0.shape[0])
+        
         self.graph = tf.Graph()
         with self.graph.as_default():
             tf.set_random_seed(self.random_seed)
             np.random.seed(self.random_seed)
 
-            self.X = tf.placeholder("float32", [None, len(self.feature_names)])
-            self.age_adjusted_X = tf.placeholder("float32", [None, len(self.feature_names)])
-            self.ages = tf.placeholder("float32", None)
-            self.regularization_weighting = tf.placeholder("float32")
+            self.X = tf.placeholder(dtype="float32", 
+                                    shape=[None, len(self.feature_names)], 
+                                    name='X')
+            self.age_adjusted_X = tf.placeholder(dtype="float32", 
+                                                 shape=[None, len(self.feature_names)], 
+                                                 name='age_adjusted_X')
+            self.ages = tf.placeholder(dtype="float32", 
+                                       shape=None, 
+                                       name='ages')
+            self.regularization_weighting = tf.placeholder(dtype="float32", name='regularization_weighting')
             self.init_network()
             if self.include_age_in_encoder_input:
                 self.Z = self.encode(self.X, self.ages)
@@ -249,9 +327,33 @@ class GeneralAutoencoder(DimReducer):
                 self.Z = self.encode(self.X)
                 
             self.Xr = self.decode(self.Z)
-            self.combined_loss, self.binary_loss, self.continuous_loss, self.reg_loss = self.get_loss()
-
+            self.combined_loss, self.binary_loss, self.continuous_loss, self.reg_loss = self.get_loss(self.X, self.Xr)
             self.optimizer = self.optimization_method(learning_rate=self.learning_rate).minimize(self.combined_loss)
+
+            if self.uses_longitudinal_data:
+
+                # now project Z0 forward to get Z1. 
+                # This requires multiplying the age components by longitudinal_ages1 / ages
+                Z1 = self.get_Z1_from_Z0(Z)
+
+                # reconstruct X1 from Z1.
+                Xr1 = self.decode(Z1)
+
+                _, self.binary_loss1, self.continuous_loss1, _ = self.get_loss(self.longitudinal_X1, self.Xr1)
+
+                self.combined_longitudinal_loss, self.binary_longitudinal_loss, \
+                  self.continuous_longitudinal_loss, self.reg_longitudinal_loss = \
+                  self.get_longitudinal_loss(
+                      self.binary_loss, 
+                      self.continuous_loss, 
+                      self.binary_loss1,
+                      self.continuous_loss1,
+                      self.reg_loss)
+            
+                self.longitudinal_optimizer = self.optimization_method(learning_rate=self.learning_rate).minimize(
+                    self.combined_longitudinal_loss)
+                
+            
             init = tf.global_variables_initializer()
             
             # with tf.Session() as self.sess:
@@ -269,12 +371,13 @@ class GeneralAutoencoder(DimReducer):
             print('Norm of params: %s' % np.linalg.norm(params['encoder_h0']))
             for epoch in range(self.max_epochs):
                 t0 = time.time()
-                regularization_weighting_for_epoch = self.get_regularization_weighting_for_epoch(epoch, verbose=verbose)
-                self._train_epoch(self.train_data, 
-                                  self.train_ages, 
-                                  regularization_weighting_for_epoch, 
-                                  self.age_adjusted_train_data)
-                
+
+                regularization_weighting_for_epoch = self.get_regularization_weighting_for_epoch(
+                    epoch,
+                    verbose=verbose)
+ 
+                self._train_epoch(regularization_weighting_for_epoch)
+                    
                 if (epoch % self.num_epochs_before_eval == 0) or (epoch == self.max_epochs - 1):
                     
                     # regularization weighting is set to 1 just for the purpose of printing out 
@@ -443,7 +546,13 @@ class GeneralAutoencoder(DimReducer):
         return mean_combined_loss, mean_binary_loss, mean_continuous_loss, mean_reg_loss
 
 
-    def _train_epoch(self, data, ages, regularization_weighting, age_adjusted_data):
+    def _train_epoch(self, regularization_weighting):
+        # This function takes very few input arguments because we assume it just uses train data, 
+        # which is already stored as fields of the object. 
+        data = self.train_data
+        ages = self.train_ages
+        age_adjusted_data = self.age_adjusted_train_data
+        
         if self.need_ages:
             assert ages is not None
 
@@ -463,8 +572,7 @@ class GeneralAutoencoder(DimReducer):
                                             ages=ages, 
                                             idxs=idxs, 
                                             age_adjusted_data=age_adjusted_data)
-            self.sess.run([self.optimizer], feed_dict=feed_dict)
-
+            self.sess.run([self.optimizer], feed_dict=feed_dict)           
 
     def reconstruct_data(self, Z_df):
         """
@@ -476,7 +584,6 @@ class GeneralAutoencoder(DimReducer):
         df = add_id(Z=X, df_with_id=Z_df)
         df.columns = ['individual_id'] + self.feature_names
         return df
-
 
     def _get_projections_from_processed_data(self, data, ages, project_onto_mean, rotation_matrix=None):
         """
@@ -497,8 +604,9 @@ class GeneralAutoencoder(DimReducer):
                     # if we have a closed form for Z_mu, use this for Z. 
                     Z = self.sess.run(self.Z_mu, feed_dict = {self.X:data_i, self.ages:ages_i})
                 else:
-                    # otherwise, compute 10 replicates, take mean. 
-                    n_replicates = 10
+                    # otherwise, compute 100 replicates, take mean. 
+                    n_replicates = 100
+                    print('number of replicates to compute Z_mu: %i' % n_replicates)
                     for replicate_idx in range(n_replicates):
                         replicate_Z = self.sess.run(self.Z, feed_dict = {self.X:data_i, self.ages:ages_i})
                         if replicate_idx == 0:

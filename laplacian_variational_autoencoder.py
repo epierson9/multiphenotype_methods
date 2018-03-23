@@ -55,11 +55,11 @@ class VariationalLaplacianAutoencoder(VariationalAutoencoder):
         return Z
 
 
-    def get_loss(self):
+    def get_loss(self, X, Xr):
         """
         Uses self.X, self.Xr, self.Z_sigma, self.Z_mu, self.kl_weighting
         """
-        _, binary_loss, continuous_loss, _ = super(VariationalLaplacianAutoencoder, self).get_loss()   
+        _, binary_loss, continuous_loss, _ = super(VariationalLaplacianAutoencoder, self).get_loss(X, Xr)   
         
         # Important: this deviates from the standard Gaussian autoencoder
         # We assume that the prior is a Laplacian with sigma = 1, mu = 0.
