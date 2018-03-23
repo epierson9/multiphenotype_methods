@@ -334,10 +334,10 @@ class GeneralAutoencoder(DimReducer):
 
                 # now project Z0 forward to get Z1. 
                 # This requires multiplying the age components by longitudinal_ages1 / ages
-                Z1 = self.get_Z1_from_Z0(Z)
+                self.Z1 = self.get_Z1_from_Z0(self.Z)
 
                 # reconstruct X1 from Z1.
-                Xr1 = self.decode(Z1)
+                self.Xr1 = self.decode(self.Z1)
 
                 _, self.binary_loss1, self.continuous_loss1, _ = self.get_loss(self.longitudinal_X1, self.Xr1)
 
