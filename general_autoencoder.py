@@ -145,7 +145,7 @@ class GeneralAutoencoder(DimReducer):
     def combine_loss_components(self, binary_loss, continuous_loss, regularization_loss):
         return binary_loss + continuous_loss + self.regularization_weighting * regularization_loss
 
-    def fit(self, train_df, valid_df):
+    def fit(self, train_df, valid_df, verbose=True):
         print("Fitting model using method %s." % self.__class__.__name__)
         
         assert train_df.shape[1] == valid_df.shape[1]
@@ -160,9 +160,9 @@ class GeneralAutoencoder(DimReducer):
             train_ages = self.get_ages(train_df)
             valid_ages = self.get_ages(valid_df)
             
-        self._fit_from_processed_data(train_data, valid_data, train_ages, valid_ages)
+        self._fit_from_processed_data(train_data, valid_data, train_ages, valid_ages, verbose=verbose)
     
-    def get_regularization_weighting_for_epoch(self, epoch):
+    def get_regularization_weighting_for_epoch(self, epoch, verbose=True):
         if self.regularization_weighting_schedule['schedule_type'] == 'constant':
             weighting = self.regularization_weighting_schedule['constant']
         elif self.regularization_weighting_schedule['schedule_type'] == 'logistic':
@@ -175,7 +175,8 @@ class GeneralAutoencoder(DimReducer):
         else:
             raise Exception("Invalid schedule type.")
         assert (weighting <= 1) and (weighting >= 0)
-        print("Regularization weighting at epoch %i is %2.3e" % (epoch, weighting))
+        if verbose:
+            print("Regularization weighting at epoch %i is %2.3e" % (epoch, weighting))
         return weighting
     
     def model_features_as_function_of_age(self, data, ages):
@@ -206,7 +207,8 @@ class GeneralAutoencoder(DimReducer):
             decorrelated_data[:, i] = decorrelated_data[:, i] - slope * ages - intercept
         return decorrelated_data
     
-    def _fit_from_processed_data(self, train_data, valid_data, train_ages=None, valid_ages=None):
+    def _fit_from_processed_data(self, train_data, valid_data, train_ages=None, valid_ages=None,
+                                 verbose=True):
         """
         train_data and valid_data are data matrices
         """
@@ -267,7 +269,7 @@ class GeneralAutoencoder(DimReducer):
             print('Norm of params: %s' % np.linalg.norm(params['encoder_h0']))
             for epoch in range(self.max_epochs):
                 t0 = time.time()
-                regularization_weighting_for_epoch = self.get_regularization_weighting_for_epoch(epoch)
+                regularization_weighting_for_epoch = self.get_regularization_weighting_for_epoch(epoch, verbose=verbose)
                 self._train_epoch(self.train_data, 
                                   self.train_ages, 
                                   regularization_weighting_for_epoch, 
@@ -275,18 +277,20 @@ class GeneralAutoencoder(DimReducer):
                 
                 if (epoch % self.num_epochs_before_eval == 0) or (epoch == self.max_epochs - 1):
                     
+                    # regularization weighting is set to 1 just for the purpose of printing out 
+                    # the losses
                     train_mean_combined_loss, train_mean_binary_loss, \
                         train_mean_continuous_loss, train_mean_reg_loss = \
                         self.minibatch_mean_eval(self.train_data, 
                                                  self.train_ages, 
                                                  self.age_adjusted_train_data,
-                                                 regularization_weighting_for_epoch)
+                                                 regularization_weighting=1)
                     valid_mean_combined_loss, valid_mean_binary_loss, \
                         valid_mean_continuous_loss, valid_mean_reg_loss = \
                         self.minibatch_mean_eval(self.valid_data, 
                                                  self.valid_ages, 
                                                  self.age_adjusted_valid_data,
-                                                 regularization_weighting_for_epoch)    
+                                                 regularization_weighting=1)    
 
                     print('Epoch %i:\nTrain: mean loss %2.3f (%2.3f + %2.3f + %2.3f * %2.3f).  '
                         'Valid: mean loss %2.3f (%2.3f + %2.3f + %2.3f * %2.3f)' % (
@@ -354,7 +358,8 @@ class GeneralAutoencoder(DimReducer):
                             break        
                     else:
                         n_epochs_without_improvement = 0
-                print("Total time to run epoch: %2.3f seconds" % (time.time() - t0))
+                if verbose:
+                    print("Total time to run epoch: %2.3f seconds" % (time.time() - t0))
     
     def save_model(self, path_to_save_model):
         print("Done training model; saving at path %s." % path_to_save_model)
