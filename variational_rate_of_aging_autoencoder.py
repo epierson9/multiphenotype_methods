@@ -26,7 +26,8 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
                  sparsity_weighting=0,
                  aging_rate_scaling_factor=.1,
                  **kwargs):
-        super(VariationalRateOfAgingAutoencoder, self).__init__(**kwargs)   
+        super(VariationalRateOfAgingAutoencoder, self).__init__(is_rate_of_aging_model=True,
+                                                                **kwargs)   
         self.k_age = k_age
         assert self.k >= self.k_age
         self.need_ages = True
