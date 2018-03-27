@@ -28,12 +28,16 @@ class VariationalLongitudinalRateOfAgingAutoencoder(VariationalRateOfAgingAutoen
     def __init__(self,
                  longitudinal_loss_weighting_factor=1,
                  longitudinal_batch_size=128,
+                 optimize_longitudinal_loss=True,
+                 optimize_cross_sectional_loss=True,
                  **kwargs):
         super(VariationalLongitudinalRateOfAgingAutoencoder, self).__init__(uses_longitudinal_data=True, 
                                                                             **kwargs)  
         
         self.longitudinal_loss_weighting_factor = longitudinal_loss_weighting_factor
         self.longitudinal_batch_size = longitudinal_batch_size
+        self.optimize_longitudinal_loss = optimize_longitudinal_loss
+        self.optimize_cross_sectional_loss = optimize_cross_sectional_loss
          
     def init_network(self):
         # define two additional placeholders to store the followup longitudinal ages and values
@@ -98,19 +102,40 @@ class VariationalLongitudinalRateOfAgingAutoencoder(VariationalRateOfAgingAutoen
             
             # randomize whether longitudinal or cross-sectional update comes first. 
             if np.random.random() < .5:
-                _, batch_cross_sectional_loss = self.sess.run([self.optimizer, 
-                                                               self.combined_loss],
-                                                              feed_dict=cross_sectional_feed_dict)
-                _, batch_longitudinal_loss = self.sess.run([self.longitudinal_optimizer,
-                                                        self.combined_longitudinal_loss],
-                                                       feed_dict=longitudinal_feed_dict) 
+                # update cross sectional then longitudinal loss
+                if self.optimize_cross_sectional_loss:
+                    # if yes, both evaluate the loss and update the weights
+                    _, batch_cross_sectional_loss = self.sess.run([self.optimizer, 
+                                                                   self.combined_loss],
+                                                                  feed_dict=cross_sectional_feed_dict)
+                else:
+                    # otherwise, just evaluate the loss. 
+                    batch_cross_sectional_loss = self.sess.run(self.combined_loss,
+                                                               feed_dict=cross_sectional_feed_dict)
+                    
+                if self.optimize_longitudinal_loss:
+                    _, batch_longitudinal_loss = self.sess.run([self.longitudinal_optimizer,
+                                                            self.combined_longitudinal_loss],
+                                                           feed_dict=longitudinal_feed_dict) 
+                else:
+                    batch_longitudinal_loss = self.sess.run(self.combined_longitudinal_loss,
+                                                           feed_dict=longitudinal_feed_dict) 
             else:
-                _, batch_longitudinal_loss = self.sess.run([self.longitudinal_optimizer,
-                                                        self.combined_longitudinal_loss],
-                                                       feed_dict=longitudinal_feed_dict) 
-                _, batch_cross_sectional_loss = self.sess.run([self.optimizer, 
-                                                               self.combined_loss],
-                                                              feed_dict=cross_sectional_feed_dict)
+                # update longitudinal then cross-sectional loss
+                if self.optimize_longitudinal_loss:
+                    _, batch_longitudinal_loss = self.sess.run([self.longitudinal_optimizer,
+                                                            self.combined_longitudinal_loss],
+                                                           feed_dict=longitudinal_feed_dict) 
+                else:
+                    batch_longitudinal_loss = self.sess.run(self.combined_longitudinal_loss,
+                                                           feed_dict=longitudinal_feed_dict) 
+                if self.optimize_cross_sectional_loss:
+                    _, batch_cross_sectional_loss = self.sess.run([self.optimizer, 
+                                                                   self.combined_loss],
+                                                                  feed_dict=cross_sectional_feed_dict)
+                else:
+                    batch_cross_sectional_loss = self.sess.run(self.combined_loss,
+                                                               feed_dict=cross_sectional_feed_dict)
                               
             total_cross_sectional_loss = (total_cross_sectional_loss 
                                           + batch_cross_sectional_loss * len(cross_sectional_idxs))
@@ -123,14 +148,17 @@ class VariationalLongitudinalRateOfAgingAutoencoder(VariationalRateOfAgingAutoen
                  
         total_cross_sectional_loss = total_cross_sectional_loss / total_cross_sectional_points
         total_longitudinal_loss = total_longitudinal_loss / total_longitudinal_points
-        
+        total_longitudinal_loss = total_longitudinal_loss / self.longitudinal_loss_weighting_factor
         print(("Cross-sectional loss: %2.3f; " + 
                "longitudinal loss: %2.3f; " + 
                "longitudinal weighting factor: %2.3f\n" + 
-               "(losses are per-example, after multiplying by the longitudinal weighting factor)") % (
+               "(losses are per-example, PRIOR to multiplying by the longitudinal weighting factor)\n" + 
+              "optimizing longitudinal loss: %s; optimizing cross-sectional loss: %s") % (
             total_cross_sectional_loss,
             total_longitudinal_loss, 
-            self.longitudinal_loss_weighting_factor))
+            self.longitudinal_loss_weighting_factor, 
+            self.optimize_longitudinal_loss, 
+            self.optimize_cross_sectional_loss))
 
     def fill_feed_dict_longitudinal(self, 
                                     longitudinal_X0, 
