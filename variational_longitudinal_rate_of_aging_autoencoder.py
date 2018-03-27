@@ -66,6 +66,11 @@ class VariationalLongitudinalRateOfAgingAutoencoder(VariationalRateOfAgingAutoen
         n_cross_sectional_points = data.shape[0]
         n_cross_sectional_batches = len(train_batches)        
         n_longitudinal_points = train_longitudinal_X0.shape[0]
+        # create longitudinal batches (one for each cross-sectional branch). Sample with replacement. 
+        # each row is one set of idxs. 
+        longitudinal_train_batches = np.random.choice(n_longitudinal_points, 
+                                                      size=[n_cross_sectional_batches, self.longitudinal_batch_size], 
+                                                            replace=True)
                                                                                
         # train. For each cross-sectional batch, we sample a random longitudinal batch of size self.longitudinal_batch_size
         total_longitudinal_loss = 0
@@ -74,7 +79,7 @@ class VariationalLongitudinalRateOfAgingAutoencoder(VariationalRateOfAgingAutoen
         total_cross_sectional_points = 0
         
         for i in range(n_cross_sectional_batches):
-            longitudinal_idxs = np.random.choice(n_longitudinal_points, size=self.longitudinal_batch_size, replace=False)
+            longitudinal_idxs = longitudinal_train_batches[i, :]
             longitudinal_feed_dict = self.fill_feed_dict_longitudinal(
                 longitudinal_X0=train_longitudinal_X0,
                 longitudinal_X1=train_longitudinal_X1,
