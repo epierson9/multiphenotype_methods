@@ -130,18 +130,11 @@ class StandardAutoencoder(GeneralAutoencoder):
             # upweight binary loss by the binary loss weighting. 
             binary_loss = self.binary_loss_weighting * binary_loss
         return binary_loss
-        
-    def get_loss(self, X, Xr):     
-        """
-        Uses self.X and self.Xr. 
-        """
+    
+    def get_binary_and_continuous_loss(self, X, Xr):
         X_binary, X_continuous = self.split_into_binary_and_continuous(X)
         Xr_logits, Xr_continuous = self.split_into_binary_and_continuous(Xr)
-        
         binary_loss = self.get_binary_loss(X_binary, Xr_logits)
         continuous_loss = self.get_continuous_loss(X_continuous, Xr_continuous)
-
-        reg_loss = tf.zeros(1)
-        combined_loss = self.combine_loss_components(binary_loss, continuous_loss, reg_loss)    
-
-        return combined_loss, binary_loss, continuous_loss, reg_loss
+        return binary_loss, continuous_loss
+    

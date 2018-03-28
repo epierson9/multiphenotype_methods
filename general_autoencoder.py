@@ -82,7 +82,7 @@ class GeneralAutoencoder(DimReducer):
         self.binary_feature_idxs = None
         self.continuous_feature_idxs = None
         self.feature_names = None
-        self.longitudinal_loss_weighting_factor = None
+        self.lon_loss_weighting_factor = None
                     
     def data_preprocessing_function(self, df):
         # this function is used to process multiple dataframes so make sure that they are in the same format
@@ -147,10 +147,7 @@ class GeneralAutoencoder(DimReducer):
         raise NotImplementedError
 
     def get_longitudinal_loss():
-        raise NotImplementedError
-
-    def get_Z1_from_Z0(self, Z0):
-        raise NotImplementedError        
+        raise NotImplementedError      
         
     def age_preprocessing_function(self, ages):
         # two possibilities: either subtract a constant (to roughly zero-mean ages) 
@@ -177,8 +174,8 @@ class GeneralAutoencoder(DimReducer):
     def fit(self, 
             train_df, 
             valid_df, 
-            train_longitudinal_df0=None, # longitudinal data at the first and second timepoint, respectively. 
-            train_longitudinal_df1=None,
+            train_lon_df0=None, # lon data at the first and second timepoint, respectively. 
+            train_lon_df1=None,
             verbose=True):
 
         print("Fitting model using method %s." % self.__class__.__name__)
@@ -196,30 +193,30 @@ class GeneralAutoencoder(DimReducer):
             valid_ages = self.get_ages(valid_df)
             
         # preprocess longitudinal data
-        train_longitudinal_X0 = None
-        train_longitudinal_X1 = None
-        train_longitudinal_ages0 = None
-        train_longitudinal_ages1 = None
+        train_lon_X0 = None
+        train_lon_X1 = None
+        train_lon_ages0 = None
+        train_lon_ages1 = None
         if self.uses_longitudinal_data:
-            assert train_longitudinal_df0 is not None
-            assert train_longitudinal_df1 is not None
-            assert len(train_longitudinal_df0) == len(train_longitudinal_df1)
-            train_longitudinal_X0 = self.data_preprocessing_function(train_longitudinal_df0)
-            train_longitudinal_X1 = self.data_preprocessing_function(train_longitudinal_df1)
-            train_longitudinal_ages0 = self.get_ages(train_longitudinal_df0)
-            train_longitudinal_ages1 = self.get_ages(train_longitudinal_df1)
+            assert train_lon_df0 is not None
+            assert train_lon_df1 is not None
+            assert len(train_lon_df0) == len(train_lon_df1)
+            train_lon_X0 = self.data_preprocessing_function(train_lon_df0)
+            train_lon_X1 = self.data_preprocessing_function(train_lon_df1)
+            train_lon_ages0 = self.get_ages(train_lon_df0)
+            train_lon_ages1 = self.get_ages(train_lon_df1)
         else:
-            assert train_longitudinal_df0 is None
-            assert train_longitudinal_df1 is None
+            assert train_lon_df0 is None
+            assert train_lon_df1 is None
             
         self._fit_from_processed_data(train_data=train_data, 
                                       valid_data=valid_data, 
                                       train_ages=train_ages, 
                                       valid_ages=valid_ages, 
-                                      train_longitudinal_X0=train_longitudinal_X0, 
-                                      train_longitudinal_X1=train_longitudinal_X1, 
-                                      train_longitudinal_ages0=train_longitudinal_ages0, 
-                                      train_longitudinal_ages1=train_longitudinal_ages1,
+                                      train_lon_X0=train_lon_X0, 
+                                      train_lon_X1=train_lon_X1, 
+                                      train_lon_ages0=train_lon_ages0, 
+                                      train_lon_ages1=train_lon_ages1,
                                       verbose=verbose)
                                           
     def get_regularization_weighting_for_epoch(self, epoch, verbose=True):
@@ -267,15 +264,28 @@ class GeneralAutoencoder(DimReducer):
             decorrelated_data[:, i] = decorrelated_data[:, i] - slope * ages - intercept
         return decorrelated_data
     
+    def set_up_encoder_structure():
+        """
+        This function sets up the basic encoder structure and return arguments. 
+        Most basic: Z is just a function of X. 
+        """
+        self.Z = self.encode(self.X)
+        
+    def set_up_regularization_loss_structure():
+        """
+        This function sets up the basic loss structure. Should define self.reg_loss. 
+        """
+        self.reg_loss = 0
+          
     def _fit_from_processed_data(self, 
                                  train_data, 
                                  valid_data, 
                                  train_ages=None, 
                                  valid_ages=None, 
-                                 train_longitudinal_X0=None, 
-                                 train_longitudinal_X1=None, 
-                                 train_longitudinal_ages0=None, 
-                                 train_longitudinal_ages1=None,
+                                 train_lon_X0=None, 
+                                 train_lon_X1=None, 
+                                 train_lon_ages0=None, 
+                                 train_lon_ages1=None,
                                  verbose=True):
         """
         train_data and valid_data are data matrices
@@ -302,11 +312,11 @@ class GeneralAutoencoder(DimReducer):
             self.train_data.shape[0], self.valid_data.shape[0]))
         
         if self.uses_longitudinal_data:
-            self.train_longitudinal_X0 = train_longitudinal_X0
-            self.train_longitudinal_X1 = train_longitudinal_X1
-            self.train_longitudinal_ages0 = train_longitudinal_ages0
-            self.train_longitudinal_ages1 = train_longitudinal_ages1
-            print("LONGITUDINAL train data size %i" % self.train_longitudinal_X0.shape[0])
+            self.train_lon_X0 = train_lon_X0
+            self.train_lon_X1 = train_lon_X1
+            self.train_lon_ages0 = train_lon_ages0
+            self.train_lon_ages1 = train_lon_ages1
+            print("LONGITUDINAL train data size %i" % self.train_lon_X0.shape[0])
         
         self.graph = tf.Graph()
         with self.graph.as_default():
@@ -323,38 +333,33 @@ class GeneralAutoencoder(DimReducer):
                                        shape=None, 
                                        name='ages')
             self.regularization_weighting = tf.placeholder(dtype="float32", name='regularization_weighting')
-            self.init_network()
-            if self.include_age_in_encoder_input:
-                self.Z = self.encode(self.X, self.ages)
-            else:
-                self.Z = self.encode(self.X)
-                
+            self.init_network() # set up the networks that produce the encoder and decoder. 
+            self.set_up_encoder_structure() # set up the basic call signature and return values for the encoder. 
+            self.set_up_regularization_loss_structure() # set up the basic call signature for the regularization loss. 
             self.Xr = self.decode(self.Z)
-            self.combined_loss, self.binary_loss, self.continuous_loss, self.reg_loss = self.get_loss(self.X, self.Xr)
+            
+            # set up losses. self.reg_loss has already been defined in self.set_up_regularization_loss_structure
+            self.binary_loss, self.continuous_loss = self.get_binary_and_continuous_loss(self.X, self.Xr)
+            self.combined_loss = self.combine_loss_components(self.binary_loss, self.continuous_loss, self.reg_loss)
             self.optimizer = self.optimization_method(learning_rate=self.learning_rate).minimize(self.combined_loss)
 
             if self.uses_longitudinal_data:
+                # need to define additional losses here. 
+                self.lon_Xr0 = self.decode(self.lon_Z0)
+                self.lon_Xr1 = self.decode(self.lon_Z1)
+                self.lon_binary_loss0, self.lon_continuous_loss0 = self.get_binary_and_continuous_loss(self.lon_X0, self.lon_Xr0)
+                self.lon_binary_loss1, self.lon_continuous_loss1 = self.get_binary_and_continuous_loss(self.lon_X0, self.lon_Xr0)
 
-                # now project Z0 forward to get Z1. 
-                # This requires multiplying the age components by longitudinal_ages1 / ages
-                self.Z1 = self.get_Z1_from_Z0(self.Z)
-
-                # reconstruct X1 from Z1.
-                self.Xr1 = self.decode(self.Z1)
-
-                _, self.binary_loss1, self.continuous_loss1, _ = self.get_loss(self.longitudinal_X1, self.Xr1)
-
-                self.combined_longitudinal_loss, self.binary_longitudinal_loss, \
-                  self.continuous_longitudinal_loss, self.reg_longitudinal_loss = \
-                  self.get_longitudinal_loss(
-                      self.binary_loss, 
-                      self.continuous_loss, 
-                      self.binary_loss1,
-                      self.continuous_loss1,
-                      self.reg_loss)
-            
-                self.longitudinal_optimizer = self.optimization_method(learning_rate=self.learning_rate).minimize(
-                    self.combined_longitudinal_loss)
+                # multiply all loss components by longitudinal loss weighting factor
+                binary_lon_loss = (self.lon_binary_loss0 + self.lon_binary_loss1) * self.lon_loss_weighting_factor
+                continuous_lon_loss = (self.lon_continuous_loss0 + self.lon_continuous_loss1) * self.lon_loss_weighting_factor
+                
+                reg_lon_loss = self.reg_lon_loss * self.lon_loss_weighting_factor
+                self.combined_lon_loss = binary_lon_loss + continuous_lon_loss + reg_lon_loss
+                
+                self.combined_cross_sectional_plus_lon_loss = (self.combined_lon_loss + self.combined_loss)
+                self.optimizer = self.optimization_method(learning_rate=self.learning_rate).minimize(
+                    self.combined_cross_sectional_plus_lon_loss)
                 
             
             init = tf.global_variables_initializer()
