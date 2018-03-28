@@ -36,7 +36,7 @@ class VariationalLongitudinalRateOfAgingAutoencoder(VariationalRateOfAgingAutoen
         self.lon_batch_size = lon_batch_size
          
     def init_network(self):
-        # define two additional placeholders to store the followup longitudinal ages and values
+        # define four additional placeholders to store the followup longitudinal ages and values
         self.lon_ages0 = tf.placeholder("float32", None, name='lon_ages0')
         self.lon_X0 = tf.placeholder("float32", None, name='lon_X0')
         self.lon_ages1 = tf.placeholder("float32", None, name='lon_ages1')
@@ -90,8 +90,8 @@ class VariationalLongitudinalRateOfAgingAutoencoder(VariationalRateOfAgingAutoen
         # create longitudinal batches (one for each cross-sectional branch). Sample with replacement. 
         # each row is one set of idxs. 
         lon_train_batches = np.random.choice(n_lon_points, 
-                                                      size=[n_cross_sectional_batches, self.lon_batch_size], 
-                                                            replace=True)
+                                             size=[n_cross_sectional_batches, self.lon_batch_size],
+                                             replace=True)
                                                                                
         # train. For each cross-sectional batch, we sample a random longitudinal batch of size self.lon_batch_size
         total_lon_loss = 0
