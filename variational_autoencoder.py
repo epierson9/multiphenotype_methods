@@ -58,7 +58,13 @@ class VariationalAutoencoder(StandardAutoencoder):
             self.biases['decoder_b%i' % decoder_layer_idx] = tf.Variable(
                 self.initialization_function([output_dim]))
                 
-
+    def set_up_encoder_structure():
+        """
+        This function sets up the basic encoder structure and return arguments. 
+        We need to return Z, Z_mu, and Z_sigma. 
+        """
+        self.Z, self.Z_mu, self.Z_sigma = self.encode(self.X) 
+        
     def encode(self, X):          
         num_layers = len(self.encoder_layer_sizes)
         # Get mu 
@@ -69,7 +75,7 @@ class VariationalAutoencoder(StandardAutoencoder):
             # No non-linearity on the last layer
             if idx != num_layers - 1:
                 mu = self.non_linearity(mu)
-        self.Z_mu = mu
+        Z_mu = mu
 
         # Get sigma
         sigma = X
@@ -81,12 +87,12 @@ class VariationalAutoencoder(StandardAutoencoder):
                 sigma = self.non_linearity(sigma)
         sigma = sigma * self.sigma_scaling # scale so sigma doesn't explode when we exponentiate it. 
         sigma = tf.exp(sigma)
-        self.Z_sigma = sigma
+        Z_sigma = sigma
 
         # Sample from N(mu, sigma)
-        self.eps = tf.random_normal(tf.shape(self.Z_mu), dtype=tf.float32, mean=0., stddev=1.0, seed=self.random_seed)
-        Z = self.Z_mu + self.Z_sigma * self.eps        
-        return Z
+        eps = tf.random_normal(tf.shape(Z_mu), dtype=tf.float32, mean=0., stddev=1.0, seed=self.random_seed)
+        Z = Z_mu + Z_sigma * eps        
+        return Z, Z_mu, Z_sigma
     
     def sample_X_given_Z(self, Z):
         """
