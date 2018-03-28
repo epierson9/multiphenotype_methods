@@ -40,37 +40,36 @@ class VariationalAgeAutoencoder(VariationalAutoencoder):
                                               cov = np.eye(self.k),
                                               size = n)
         return Z
+    
+    def set_up_regularization_loss_structure(self):
+        """
+        This function sets up the basic loss structure. Should define self.reg_loss. 
+        """
+        self.reg_loss = self.get_regularization_loss(self.ages, self.Z_mu, self.Z_sigma)   
         
-    def get_loss(self, X, Xr):
-        """
-        Uses self.X, self.Xr, self.Z_sigma, self.Z_mu, self.kl_weighting
-        """
-        _, binary_loss, continuous_loss, _ = super(VariationalAgeAutoencoder, self).get_loss(X, Xr)
-
+    def get_regularization_loss(self, ages, Z_mu, Z_sigma):
         # Subtract off self.Z_age_coef * self.ages from the components of self.Z_mu 
         # that are supposed to correlate with age
         # This assumes that the age-related components are drawn from N(Z_age_coef * age, 1)
-        Z_mu_age = self.Z_mu[:, :self.k_age] - self.Z_age_coef * tf.reshape(self.ages, (-1, 1)) # Relies on broadcasting
+        Z_mu_age = Z_mu[:, :self.k_age] - self.Z_age_coef * tf.reshape(ages, (-1, 1)) # Relies on broadcasting
 
         # Leave the other components untouched
-        Z_mu_others = self.Z_mu[:, self.k_age:]
+        Z_mu_others = Z_mu[:, self.k_age:]
 
         # Z_mu_diffs is the difference between Z_mu and the priors
         Z_mu_diffs = tf.concat((Z_mu_age, Z_mu_others), axis=1)
 
         kl_div_loss = -.5 * (
             1 + 
-            2 * tf.log(self.Z_sigma) - tf.square(Z_mu_diffs) - tf.square(self.Z_sigma))
+            2 * tf.log(Z_sigma) - tf.square(Z_mu_diffs) - tf.square(Z_sigma))
         kl_div_loss = tf.reduce_mean(
             tf.reduce_sum(
                 kl_div_loss,
                 axis=1),
             axis=0)
+        
+        return kl_div_loss
 
-        combined_loss = self.combine_loss_components(binary_loss, continuous_loss, kl_div_loss)
-
-        return combined_loss, binary_loss, continuous_loss, kl_div_loss  
-    
     def fast_forward_Z(self, Z0, train_df, years_to_move_forward):
         Z0_projected_forward = copy.deepcopy(Z0)
         # move age components forward. 

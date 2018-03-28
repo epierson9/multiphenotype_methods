@@ -54,13 +54,13 @@ class VariationalLaplacianAutoencoder(VariationalAutoencoder):
         Z = Z_mu - Z_sigma * tf.sign(eps) * tf.log(1 - 2 * tf.abs(eps) + 1e-8) 
         return Z, Z_mu, Z_sigma
 
-
-    def get_loss(self, X, Xr):
+    def set_up_regularization_loss_structure(self):
         """
-        Uses self.X, self.Xr, self.Z_sigma, self.Z_mu, self.kl_weighting
+        This function sets up the basic loss structure. Should define self.reg_loss. 
         """
-        _, binary_loss, continuous_loss, _ = super(VariationalLaplacianAutoencoder, self).get_loss(X, Xr)   
-        
+        self.reg_loss = self.get_regularization_loss(self.Z_mu, self.Z_sigma)
+    
+    def get_regularization_loss(self, Z_mu, Z_sigma):
         # Important: this deviates from the standard Gaussian autoencoder
         # We assume that the prior is a Laplacian with sigma = 1, mu = 0.
         # to compute q log p: https://www.wolframalpha.com/input/?i=integrate++1+%2F+(2+*+pi)+*+exp(-abs(x+-+7)+%2F+pi)+*+(-abs(x)+%2F+1)+from+-infinity+to+infinity
@@ -71,12 +71,10 @@ class VariationalLaplacianAutoencoder(VariationalAutoencoder):
         # KL(Q, P) = -log(sigma) - 1 + abs(mu) + sigma * exp(-abs(mu) / sigma)
         # which vanishes, as it should, when sigma = 1, mu = 0. 
         
-        kl_div_loss = -tf.log(self.Z_sigma) - 1 + tf.abs(self.Z_mu) + self.Z_sigma * tf.exp(-tf.abs(self.Z_mu) / self.Z_sigma)
+        kl_div_loss = -tf.log(Z_sigma) - 1 + tf.abs(Z_mu) + Z_sigma * tf.exp(-tf.abs(Z_mu) / Z_sigma)
         kl_div_loss = tf.reduce_mean(
             tf.reduce_sum(
                 kl_div_loss,
                 axis=1),
             axis=0)
-        combined_loss = self.combine_loss_components(binary_loss, continuous_loss, kl_div_loss)
-
-        return combined_loss, binary_loss, continuous_loss, kl_div_loss  
+        return kl_div_loss

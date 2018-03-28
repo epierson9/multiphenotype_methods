@@ -58,7 +58,7 @@ class VariationalAutoencoder(StandardAutoencoder):
             self.biases['decoder_b%i' % decoder_layer_idx] = tf.Variable(
                 self.initialization_function([output_dim]))
                 
-    def set_up_encoder_structure():
+    def set_up_encoder_structure(self):
         """
         This function sets up the basic encoder structure and return arguments. 
         We need to return Z, Z_mu, and Z_sigma. 
@@ -125,25 +125,20 @@ class VariationalAutoencoder(StandardAutoencoder):
     
     def sample_Z(self, age, n):
         return np.random.multivariate_normal(mean = np.zeros([self.k,]), cov = np.eye(self.k), size = n)
+       
+    def set_up_regularization_loss_structure(self):
+        self.reg_loss = self.get_regularization_loss(self.Z_mu, self.Z_sigma)
         
-    def get_loss(self, X, Xr):
-        """
-        Uses self.X, self.Xr, self.Z_sigma, self.Z_mu, self.kl_weighting
-        """
-        _, binary_loss, continuous_loss, _ = super(VariationalAutoencoder, self).get_loss(X, Xr)   
-
+    def get_regularization_loss(self, Z_mu, Z_sigma):
         kl_div_loss = -.5 * (
             1 + 
-            2 * tf.log(self.Z_sigma) - tf.square(self.Z_mu) - tf.square(self.Z_sigma))
+            2 * tf.log(Z_sigma) - tf.square(Z_mu) - tf.square(Z_sigma))
         kl_div_loss = tf.reduce_mean(
             tf.reduce_sum(
                 kl_div_loss,
                 axis=1),
             axis=0)
-
-        combined_loss = self.combine_loss_components(binary_loss, continuous_loss, kl_div_loss)
-
-        return combined_loss, binary_loss, continuous_loss, kl_div_loss  
+        return kl_div_loss
 
     def project_forward(self, train_df, years_to_move_forward, add_noise_to_Z, add_noise_to_X):
         """

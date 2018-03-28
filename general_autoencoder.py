@@ -144,10 +144,7 @@ class GeneralAutoencoder(DimReducer):
         raise NotImplementedError
 
     def get_loss():
-        raise NotImplementedError
-
-    def get_longitudinal_loss():
-        raise NotImplementedError      
+        return self.combined_loss, self.binary_loss, self.continuous_loss, self.reg_loss  
         
     def age_preprocessing_function(self, ages):
         # two possibilities: either subtract a constant (to roughly zero-mean ages) 
@@ -168,8 +165,8 @@ class GeneralAutoencoder(DimReducer):
         ages = np.array(df['age_sex___age'].values, dtype=np.float32)
         return self.age_preprocessing_function(ages)
             
-    def combine_loss_components(self, binary_loss, continuous_loss, regularization_loss):
-        return binary_loss + continuous_loss + self.regularization_weighting * regularization_loss
+    def combine_loss_components(self, binary_loss, continuous_loss, regularization_loss, regularization_weighting):
+        return binary_loss + continuous_loss + regularization_weighting * regularization_loss
 
     def fit(self, 
             train_df, 
@@ -264,18 +261,18 @@ class GeneralAutoencoder(DimReducer):
             decorrelated_data[:, i] = decorrelated_data[:, i] - slope * ages - intercept
         return decorrelated_data
     
-    def set_up_encoder_structure():
+    def set_up_encoder_structure(self):
         """
         This function sets up the basic encoder structure and return arguments. 
         Most basic: Z is just a function of X. 
         """
         self.Z = self.encode(self.X)
         
-    def set_up_regularization_loss_structure():
+    def set_up_regularization_loss_structure(self):
         """
         This function sets up the basic loss structure. Should define self.reg_loss. 
         """
-        self.reg_loss = 0
+        self.reg_loss = tf.zeros(1)
           
     def _fit_from_processed_data(self, 
                                  train_data, 
@@ -340,7 +337,10 @@ class GeneralAutoencoder(DimReducer):
             
             # set up losses. self.reg_loss has already been defined in self.set_up_regularization_loss_structure
             self.binary_loss, self.continuous_loss = self.get_binary_and_continuous_loss(self.X, self.Xr)
-            self.combined_loss = self.combine_loss_components(self.binary_loss, self.continuous_loss, self.reg_loss)
+            self.combined_loss = self.combine_loss_components(self.binary_loss, 
+                                                              self.continuous_loss, 
+                                                              self.reg_loss, 
+                                                              self.regularization_weighting)
             self.optimizer = self.optimization_method(learning_rate=self.learning_rate).minimize(self.combined_loss)
 
             if self.uses_longitudinal_data:
@@ -395,13 +395,13 @@ class GeneralAutoencoder(DimReducer):
                         self.minibatch_mean_eval(self.train_data, 
                                                  self.train_ages, 
                                                  self.age_adjusted_train_data,
-                                                 regularization_weighting=1)
+                                                 regularization_weighting=1.0)
                     valid_mean_combined_loss, valid_mean_binary_loss, \
                         valid_mean_continuous_loss, valid_mean_reg_loss = \
                         self.minibatch_mean_eval(self.valid_data, 
                                                  self.valid_ages, 
                                                  self.age_adjusted_valid_data,
-                                                 regularization_weighting=1)    
+                                                 regularization_weighting=1.0)    
 
                     print('Epoch %i:\nTrain: mean loss %2.3f (%2.3f + %2.3f + %2.3f * %2.3f).  '
                         'Valid: mean loss %2.3f (%2.3f + %2.3f + %2.3f * %2.3f)' % (

@@ -15,7 +15,7 @@ class StandardAutoencoder(GeneralAutoencoder):
     def __init__(self, 
                  encoder_layer_sizes,
                  decoder_layer_sizes,
-                 learn_continuous_variance=False,
+                 learn_continuous_variance=True,
                  **kwargs):
 
         super(StandardAutoencoder, self).__init__(**kwargs)   
@@ -27,6 +27,10 @@ class StandardAutoencoder(GeneralAutoencoder):
         self.learn_continuous_variance = learn_continuous_variance
 
     def init_network(self):
+        if self.learn_continuous_variance:
+            # we exponentiate this because it has to be non-negative. 
+            self.log_continuous_variance = tf.Variable(self.initialization_function([1]))
+            
         self.weights = {}
         self.biases = {}        
         
