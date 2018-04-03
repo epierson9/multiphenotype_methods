@@ -15,7 +15,7 @@ class StandardAutoencoder(GeneralAutoencoder):
     def __init__(self, 
                  encoder_layer_sizes,
                  decoder_layer_sizes,
-                 learn_continuous_variance=False,
+                 learn_continuous_variance=True,
                  **kwargs):
 
         super(StandardAutoencoder, self).__init__(**kwargs)   
@@ -27,6 +27,10 @@ class StandardAutoencoder(GeneralAutoencoder):
         self.learn_continuous_variance = learn_continuous_variance
 
     def init_network(self):
+        if self.learn_continuous_variance:
+            # we exponentiate this because it has to be non-negative. 
+            self.log_continuous_variance = tf.Variable(self.initialization_function([1]))
+            
         self.weights = {}
         self.biases = {}        
         
@@ -168,18 +172,11 @@ class StandardAutoencoder(GeneralAutoencoder):
             # upweight binary loss by the binary loss weighting. 
             binary_loss = self.binary_loss_weighting * binary_loss
         return binary_loss
-        
-    def get_loss(self, X, Xr):     
-        """
-        Uses self.X and self.Xr. 
-        """
+    
+    def get_binary_and_continuous_loss(self, X, Xr):
         X_binary, X_continuous = self.split_into_binary_and_continuous(X)
         Xr_logits, Xr_continuous = self.split_into_binary_and_continuous(Xr)
-        
         binary_loss = self.get_binary_loss(X_binary, Xr_logits)
         continuous_loss = self.get_continuous_loss(X_continuous, Xr_continuous)
-
-        reg_loss = tf.zeros(1)
-        combined_loss = self.combine_loss_components(binary_loss, continuous_loss, reg_loss)    
-
-        return combined_loss, binary_loss, continuous_loss, reg_loss
+        return binary_loss, continuous_loss
+    

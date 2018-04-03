@@ -35,6 +35,7 @@ class MortalityWeightedVariationalAgeAutoencoder(VariationalAgeAutoencoder):
         and describe each feature's contribution to mortality, but one could imagine some other way of weighting. 
         Unfortunately, this doesn't seem to work very well for binary features: very hard to train because the logistics saturate. 
         """
+        raise Exception("This isn't currently compatible with the framework, but not worth fixing unless we decide to pursue this.")
         # TODO: should probably move these two lines into the data preprocessing function somehow. 
         continuous_feature_mortality_weights = np.atleast_2d( \
             [np.abs(self.mortality_weighting_dict[self.feature_names[i]]) for i in self.continuous_feature_idxs]).transpose().astype(np.float32)

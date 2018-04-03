@@ -36,12 +36,12 @@ class SparseVariationalAgeAutoencoder(VariationalAgeAutoencoder):
         
         # assert we only have a single decoder layer (otherwise the sparsity loss doesn't make sense). 
         #assert(len([layer_name for layer_name in self.weights if 'decoder' in layer_name]) == 1)
-
-    def get_loss(self):
+           
+    def get_regularization_loss(self, ages, Z_mu, Z_sigma):
         """
         Uses self.X, self.Xr, self.Z_sigma, self.Z_mu, self.kl_weighting
         """
-        _, binary_loss, continuous_loss, kl_div_loss = super(SparseVariationalAgeAutoencoder, self).get_loss()   
+        kl_div_loss = super(SparseVariationalAgeAutoencoder, self).get_regularization_loss(ages, Z_mu, Z_sigma)
         
         decoder_layer_number = 0
         layer_name = 'decoder_h%i' % decoder_layer_number
@@ -56,6 +56,5 @@ class SparseVariationalAgeAutoencoder(VariationalAgeAutoencoder):
             
         sparsity_loss = tf.reduce_sum(tf.abs(combined_weight_matrix))
         regularization_loss = kl_div_loss + sparsity_loss * self.sparsity_weighting
-        combined_loss = self.combine_loss_components(binary_loss, continuous_loss, regularization_loss)
 
-        return combined_loss, binary_loss, continuous_loss, regularization_loss  
+        return regularization_loss
