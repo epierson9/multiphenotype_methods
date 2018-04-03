@@ -69,6 +69,8 @@ class GeneralAutoencoder(DimReducer):
             self.non_linearity = tf.nn.sigmoid
         elif non_linearity == 'relu':
             self.non_linearity = tf.nn.relu
+        elif non_linearity == 'identity':
+            self.non_linearity = tf.identity
         else:
             raise Exception("not a valid nonlinear activation")
             
@@ -134,6 +136,9 @@ class GeneralAutoencoder(DimReducer):
     def init_network(self):
         raise NotImplementedError
 
+    def get_setter_ops(self):
+        raise NotImplementedError        
+
     def encode(self, X):
         raise NotImplementedError
 
@@ -146,9 +151,6 @@ class GeneralAutoencoder(DimReducer):
     def get_longitudinal_loss():
         raise NotImplementedError
 
-    def get_Z1_from_Z0(self, Z0):
-        raise NotImplementedError        
-        
     def age_preprocessing_function(self, ages):
         # two possibilities: either subtract a constant (to roughly zero-mean ages) 
         # or divide by a constant (to keep age roughly on the same-scale as the other features)
@@ -321,6 +323,7 @@ class GeneralAutoencoder(DimReducer):
                                        name='ages')
             self.regularization_weighting = tf.placeholder(dtype="float32", name='regularization_weighting')
             self.init_network()
+            self.get_setter_ops()
             if self.include_age_in_encoder_input:
                 self.Z = self.encode(self.X, self.ages)
             else:

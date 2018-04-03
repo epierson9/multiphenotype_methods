@@ -57,7 +57,7 @@ class VariationalAutoencoder(StandardAutoencoder):
                 self.initialization_function([input_dim, output_dim]))
             self.biases['decoder_b%i' % decoder_layer_idx] = tf.Variable(
                 self.initialization_function([output_dim]))
-                
+                  
 
     def encode(self, X):          
         num_layers = len(self.encoder_layer_sizes)

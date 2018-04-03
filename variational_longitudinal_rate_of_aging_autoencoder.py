@@ -165,6 +165,7 @@ class VariationalLongitudinalRateOfAgingAutoencoder(VariationalRateOfAgingAutoen
         return feed_dict
     
     def get_Z1_from_Z0(self, Z0):
+        # This defines a new tensor, whereas the fast_forward_Z method takes in actual numbers and adjusts them
         # now project Z0 forward to get Z1. 
         # This requires multiplying the age components by longitudinal_ages1 / ages
         Z1 = tf.concat([Z0[:, :self.k_age] * tf.reshape((1.0*self.longitudinal_ages1 / self.ages), [-1, 1]), # broadcasting
