@@ -48,7 +48,7 @@ def partition_dataframe_into_binary_and_continuous(df, verbose=False):
     Returns a matrix X of df values along the column indices of binary and continuous features
     and the feature names. 
     """
-    print("Partitioning dataframe into binary and continuous columns")
+    #print("Partitioning dataframe into binary and continuous columns")
     phenotypes_to_exclude = [
         'individual_id',
         'age_sex___age']

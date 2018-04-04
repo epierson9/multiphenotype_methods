@@ -63,6 +63,25 @@ class VariationalLongitudinalRateOfAgingAutoencoder(VariationalRateOfAgingAutoen
         self.reg_loss = self.get_regularization_loss(self.encoder_mu, self.encoder_sigma)
         self.reg_lon_loss = self.get_regularization_loss(self.lon_encoder_mu, self.lon_encoder_sigma)
     
+    def set_up_longitudinal_loss_and_optimization_structure(self):
+        # if autoencoder is longitudinal, define the longitudinal loss, and change the optimizer if necessary. 
+        # need to define additional losses here. 
+        self.lon_Xr0 = self.decode(self.lon_Z0)
+        self.lon_Xr1 = self.decode(self.lon_Z1)
+        self.lon_binary_loss0, self.lon_continuous_loss0 = self.get_binary_and_continuous_loss(self.lon_X0, self.lon_Xr0)
+        self.lon_binary_loss1, self.lon_continuous_loss1 = self.get_binary_and_continuous_loss(self.lon_X0, self.lon_Xr0)
+
+        # multiply all loss components by longitudinal loss weighting factor
+        binary_lon_loss = (self.lon_binary_loss0 + self.lon_binary_loss1) * self.lon_loss_weighting_factor
+        continuous_lon_loss = (self.lon_continuous_loss0 + self.lon_continuous_loss1) * self.lon_loss_weighting_factor
+        reg_lon_loss = self.reg_lon_loss * self.lon_loss_weighting_factor
+
+        self.combined_lon_loss = binary_lon_loss + continuous_lon_loss + self.regularization_weighting * reg_lon_loss
+
+        self.combined_cross_sectional_plus_lon_loss = (self.combined_lon_loss + self.combined_loss)
+        self.optimizer = self.optimization_method(learning_rate=self.learning_rate).minimize(
+            self.combined_cross_sectional_plus_lon_loss)
+    
     def _train_epoch(self, regularization_weighting):
         # store the data we need in local variables.
         # cross-sectional data.

@@ -92,9 +92,9 @@ class GeneralAutoencoder(DimReducer):
         
         X, self.binary_feature_idxs, self.continuous_feature_idxs, self.feature_names = \
             partition_dataframe_into_binary_and_continuous(df)
-        print("Number of continuous features: %i; binary features %i" % (
-            len(self.continuous_feature_idxs), 
-            len(self.binary_feature_idxs)))
+        #print("Number of continuous features: %i; binary features %i" % (
+        #    len(self.continuous_feature_idxs), 
+        #    len(self.binary_feature_idxs)))
         if old_binary_feature_idxs is not None:
             assert list(self.binary_feature_idxs) == list(old_binary_feature_idxs)
         if old_continuous_feature_idxs is not None:
@@ -109,7 +109,7 @@ class GeneralAutoencoder(DimReducer):
         use the fitted model to get projections for df. 
         if project_onto_mean=True, projects onto the mean value of Z (Z_mu). Otherwise, samples Z.
         """
-        print("Getting projections using method %s." % self.__class__.__name__)
+        #print("Getting projections using method %s." % self.__class__.__name__)
         X = self.data_preprocessing_function(df)
         ages = self.get_ages(df)
         Z = self._get_projections_from_processed_data(X, ages, project_onto_mean, **projection_kwargs)
@@ -142,9 +142,6 @@ class GeneralAutoencoder(DimReducer):
 
     def decode(self, Z):
         raise NotImplementedError
-
-    def get_loss():
-        return self.combined_loss, self.binary_loss, self.continuous_loss, self.reg_loss  
         
     def age_preprocessing_function(self, ages):
         # two possibilities: either subtract a constant (to roughly zero-mean ages) 
@@ -165,9 +162,6 @@ class GeneralAutoencoder(DimReducer):
         ages = np.array(df['age_sex___age'].values, dtype=np.float32)
         return self.age_preprocessing_function(ages)
             
-    def combine_loss_components(self, binary_loss, continuous_loss, regularization_loss, regularization_weighting):
-        return binary_loss + continuous_loss + regularization_weighting * regularization_loss
-
     def fit(self, 
             train_df, 
             valid_df, 
@@ -273,7 +267,13 @@ class GeneralAutoencoder(DimReducer):
         This function sets up the basic loss structure. Should define self.reg_loss. 
         """
         self.reg_loss = tf.zeros(1)
-          
+        
+    def set_up_longitudinal_loss_and_optimization_structure(self):
+        """
+        Sets up the graph structure for longitudinal loss. Only used if the autoencoder is trained on longitudinal data. 
+        """
+        raise NotImplementedError
+        
     def _fit_from_processed_data(self, 
                                  train_data, 
                                  valid_data, 
@@ -337,29 +337,14 @@ class GeneralAutoencoder(DimReducer):
             
             # set up losses. self.reg_loss has already been defined in self.set_up_regularization_loss_structure
             self.binary_loss, self.continuous_loss = self.get_binary_and_continuous_loss(self.X, self.Xr)
-            self.combined_loss = self.combine_loss_components(self.binary_loss, 
-                                                              self.continuous_loss, 
-                                                              self.reg_loss, 
-                                                              self.regularization_weighting)
+            self.combined_loss = (self.binary_loss 
+                                  + self.continuous_loss 
+                                  + self.regularization_weighting * self.regularization_loss)
+            
             self.optimizer = self.optimization_method(learning_rate=self.learning_rate).minimize(self.combined_loss)
 
             if self.uses_longitudinal_data:
-                # need to define additional losses here. 
-                self.lon_Xr0 = self.decode(self.lon_Z0)
-                self.lon_Xr1 = self.decode(self.lon_Z1)
-                self.lon_binary_loss0, self.lon_continuous_loss0 = self.get_binary_and_continuous_loss(self.lon_X0, self.lon_Xr0)
-                self.lon_binary_loss1, self.lon_continuous_loss1 = self.get_binary_and_continuous_loss(self.lon_X0, self.lon_Xr0)
-
-                # multiply all loss components by longitudinal loss weighting factor
-                binary_lon_loss = (self.lon_binary_loss0 + self.lon_binary_loss1) * self.lon_loss_weighting_factor
-                continuous_lon_loss = (self.lon_continuous_loss0 + self.lon_continuous_loss1) * self.lon_loss_weighting_factor
-                
-                reg_lon_loss = self.reg_lon_loss * self.lon_loss_weighting_factor
-                self.combined_lon_loss = binary_lon_loss + continuous_lon_loss + reg_lon_loss
-                
-                self.combined_cross_sectional_plus_lon_loss = (self.combined_lon_loss + self.combined_loss)
-                self.optimizer = self.optimization_method(learning_rate=self.learning_rate).minimize(
-                    self.combined_cross_sectional_plus_lon_loss)
+                self.set_up_longitudinal_loss_and_optimization_structure()
                 
             
             init = tf.global_variables_initializer()
@@ -630,7 +615,7 @@ class GeneralAutoencoder(DimReducer):
                 Z = np.dot(Z, rotation_matrix)
             Zs.append(Z)    
         Z = np.vstack(Zs)
-        print("Shape of autoencoder projections is", Z.shape)
+        #print("Shape of autoencoder projections is", Z.shape)
         return Z
 
 
