@@ -339,7 +339,7 @@ class GeneralAutoencoder(DimReducer):
             self.binary_loss, self.continuous_loss = self.get_binary_and_continuous_loss(self.X, self.Xr)
             self.combined_loss = (self.binary_loss 
                                   + self.continuous_loss 
-                                  + self.regularization_weighting * self.regularization_loss)
+                                  + self.regularization_weighting * self.reg_loss)
             
             self.optimizer = self.optimization_method(learning_rate=self.learning_rate).minimize(self.combined_loss)
 
