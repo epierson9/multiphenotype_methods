@@ -58,7 +58,13 @@ class VariationalAutoencoder(StandardAutoencoder):
             self.biases['decoder_b%i' % decoder_layer_idx] = tf.Variable(
                 self.initialization_function([output_dim]))
                 
-
+    def set_up_encoder_structure(self):
+        """
+        This function sets up the basic encoder structure and return arguments. 
+        We need to return Z, Z_mu, and Z_sigma. 
+        """
+        self.Z, self.Z_mu, self.Z_sigma = self.encode(self.X) 
+        
     def encode(self, X):          
         num_layers = len(self.encoder_layer_sizes)
         # Get mu 
@@ -69,7 +75,7 @@ class VariationalAutoencoder(StandardAutoencoder):
             # No non-linearity on the last layer
             if idx != num_layers - 1:
                 mu = self.non_linearity(mu)
-        self.Z_mu = mu
+        Z_mu = mu
 
         # Get sigma
         sigma = X
@@ -81,12 +87,12 @@ class VariationalAutoencoder(StandardAutoencoder):
                 sigma = self.non_linearity(sigma)
         sigma = sigma * self.sigma_scaling # scale so sigma doesn't explode when we exponentiate it. 
         sigma = tf.exp(sigma)
-        self.Z_sigma = sigma
+        Z_sigma = sigma
 
         # Sample from N(mu, sigma)
-        self.eps = tf.random_normal(tf.shape(self.Z_mu), dtype=tf.float32, mean=0., stddev=1.0, seed=self.random_seed)
-        Z = self.Z_mu + self.Z_sigma * self.eps        
-        return Z
+        eps = tf.random_normal(tf.shape(Z_mu), dtype=tf.float32, mean=0., stddev=1.0, seed=self.random_seed)
+        Z = Z_mu + Z_sigma * eps        
+        return Z, Z_mu, Z_sigma
     
     def sample_X_given_Z(self, Z):
         """
@@ -119,25 +125,20 @@ class VariationalAutoencoder(StandardAutoencoder):
     
     def sample_Z(self, age, n):
         return np.random.multivariate_normal(mean = np.zeros([self.k,]), cov = np.eye(self.k), size = n)
+       
+    def set_up_regularization_loss_structure(self):
+        self.reg_loss = self.get_regularization_loss(self.Z_mu, self.Z_sigma)
         
-    def get_loss(self):
-        """
-        Uses self.X, self.Xr, self.Z_sigma, self.Z_mu, self.kl_weighting
-        """
-        _, binary_loss, continuous_loss, _ = super(VariationalAutoencoder, self).get_loss()   
-
+    def get_regularization_loss(self, Z_mu, Z_sigma):
         kl_div_loss = -.5 * (
             1 + 
-            2 * tf.log(self.Z_sigma) - tf.square(self.Z_mu) - tf.square(self.Z_sigma))
+            2 * tf.log(Z_sigma) - tf.square(Z_mu) - tf.square(Z_sigma))
         kl_div_loss = tf.reduce_mean(
             tf.reduce_sum(
                 kl_div_loss,
                 axis=1),
             axis=0)
-
-        combined_loss = self.combine_loss_components(binary_loss, continuous_loss, kl_div_loss)
-
-        return combined_loss, binary_loss, continuous_loss, kl_div_loss  
+        return kl_div_loss
 
     def project_forward(self, train_df, years_to_move_forward, add_noise_to_Z, add_noise_to_X):
         """
