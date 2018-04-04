@@ -56,11 +56,11 @@ class VariationalLongitudinalRateOfAgingAutoencoder(VariationalRateOfAgingAutoen
         self.reg_lon_loss = self.get_regularization_loss(self.lon_encoder_mu, self.lon_encoder_sigma)
     
     def set_up_longitudinal_loss_and_optimization_structure(self):
-        # if autoencoder is longitudinal, define the longitudinal loss, and change the optimizer if necessary. 
+        # define the longitudinal loss, and change the optimizer so it minimizes the longitudinal loss + the cross sectional loss. 
         self.lon_Xr0 = self.decode(self.lon_Z0)
         self.lon_Xr1 = self.decode(self.lon_Z1)
         self.lon_binary_loss0, self.lon_continuous_loss0 = self.get_binary_and_continuous_loss(self.lon_X0, self.lon_Xr0)
-        self.lon_binary_loss1, self.lon_continuous_loss1 = self.get_binary_and_continuous_loss(self.lon_X0, self.lon_Xr0)
+        self.lon_binary_loss1, self.lon_continuous_loss1 = self.get_binary_and_continuous_loss(self.lon_X1, self.lon_Xr1)
 
         # multiply all loss components by longitudinal loss weighting factor
         binary_lon_loss = (self.lon_binary_loss0 + self.lon_binary_loss1) * self.lon_loss_weighting_factor
