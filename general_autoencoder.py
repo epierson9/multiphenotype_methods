@@ -362,7 +362,7 @@ class GeneralAutoencoder(DimReducer):
                 binary_lon_loss = (self.lon_binary_loss0 + self.lon_binary_loss1) * self.lon_loss_weighting_factor
                 continuous_lon_loss = (self.lon_continuous_loss0 + self.lon_continuous_loss1) * self.lon_loss_weighting_factor
                 
-                reg_lon_loss = self.reg_lon_loss * self.lon_loss_weighting_factor
+                reg_lon_loss = self.reg_lon_loss * self.lon_loss_weighting_factor 
                 self.combined_lon_loss = binary_lon_loss + continuous_lon_loss + reg_lon_loss
                 
                 self.combined_cross_sectional_plus_lon_loss = (self.combined_lon_loss + self.combined_loss)
