@@ -13,16 +13,8 @@ from variational_rate_of_aging_autoencoder import VariationalRateOfAgingAutoenco
 class VariationalLongitudinalRateOfAgingAutoencoder(VariationalRateOfAgingAutoencoder):
     """
     Implements a variational rate-of-aging autoencoder with longitudinal data. 
-    This class has two substantial modifications from the superclasses. 
-    First, we define a get_longitudinal_loss function, which computes loss on longitudinal data. 
-    Second, we overwrite _train_epoch so we train on both longitudinal and cross-sectional data. 
-    _train_epoch divides the cross-sectional data into small batches, the longitudinal data into small batches
-    and alternates between training on the cross-sectional data and the longitudinal data.
-    On the cross-sectional data, it calls the standard superclass loss function; 
-    on the longitudinal data, it calls the longitudinal loss function.
-    A hyperparameter, longitudinal_loss_weighting_factor, controls the relative weighting of the two losses. 
-    
-    Potential todo: right now this only computes the validation loss on cross-sectional data. 
+    Does this by defining a combined_cross_sectional_plus_lon_loss and minimizing that instead. 
+    combined_cross_sectional_plus_lon_loss is the standard cross-sectional loss plus an additional longitudinal loss. 
     """    
     
     def __init__(self,
@@ -65,7 +57,6 @@ class VariationalLongitudinalRateOfAgingAutoencoder(VariationalRateOfAgingAutoen
     
     def set_up_longitudinal_loss_and_optimization_structure(self):
         # if autoencoder is longitudinal, define the longitudinal loss, and change the optimizer if necessary. 
-        # need to define additional losses here. 
         self.lon_Xr0 = self.decode(self.lon_Z0)
         self.lon_Xr1 = self.decode(self.lon_Z1)
         self.lon_binary_loss0, self.lon_continuous_loss0 = self.get_binary_and_continuous_loss(self.lon_X0, self.lon_Xr0)
