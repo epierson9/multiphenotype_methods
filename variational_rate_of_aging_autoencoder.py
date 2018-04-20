@@ -64,8 +64,6 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
         return np.concatenate([Z_age, Z_non_age], axis=1)
     
     def set_up_encoder_structure(self):
-        # set up both longitudinal encoder and cross-sectional encoder. 
-        # cross-sectional encoder is straightforward.
         self.Z, self.Z_mu, self.Z_sigma, self.encoder_mu, self.encoder_sigma = self.encode(self.X, self.ages)
         
     def set_up_regularization_loss_structure(self):
