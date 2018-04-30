@@ -24,7 +24,8 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
     def __init__(self,
                  k_age,
                  sparsity_weighting=0,
-                 aging_rate_scaling_factor=.1,
+                 preset_aging_rate_scaling_factor=None,
+                 learn_aging_rate_scaling_factor_from_data=True,
                  age_preprocessing_method='subtract_about_40_and_divide_by_30',
                  # for rate of aging autoencoders we default to starting age at (approximately) 0 because
                  # it seems safer to only assume linear movement through Z-space over the range where we have data. 
@@ -37,11 +38,17 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
         self.need_ages = True
         self.sparsity_weighting = sparsity_weighting
         self.can_calculate_Z_mu = True
-        # otherwise we end up with people with negative ages, which will mess up the interpretation of the aging rate. 
-        # we divide by a constant to put age on roughly the same scale as the other features. 
 
         self.include_age_in_encoder_input = True
-        self.aging_rate_scaling_factor = aging_rate_scaling_factor 
+        
+        # we can either preset the aging_rate_scaling_factor or learn it from the data; ensure we're only doing one of these. 
+        if learn_aging_rate_scaling_factor_from_data:
+            assert preset_aging_rate_scaling_factor is None
+        else:
+            assert preset_aging_rate_scaling_factor is not None
+        self.learn_aging_rate_scaling_factor_from_data = learn_aging_rate_scaling_factor_from_data
+        self.preset_aging_rate_scaling_factor = preset_aging_rate_scaling_factor 
+        
         # log_unscaled_aging_rate ~ N(0, 1)
         # Z_age = age * exp(self.aging_rate_scaling_factor * log_unscaled_aging_rate) 
         # so aging_rate_scaling_factor controls how much spread we have on the aging rate.
@@ -165,6 +172,15 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
         """
         self.weights = {}
         self.biases = {} 
+        
+        if self.learn_aging_rate_scaling_factor_from_data:
+            # we exponentiate this because it has to be non-negative. 
+            print("Learning aging rate scaling factor from data.")
+            self.log_aging_rate_scaling_factor = tf.Variable(self.initialization_function([1]))
+            self.aging_rate_scaling_factor = tf.exp(self.log_aging_rate_scaling_factor)
+        else:
+            print("Setting aging rate scaling factor to %2.3f" % self.preset_aging_rate_scaling_factor)
+            self.aging_rate_scaling_factor = self.preset_aging_rate_scaling_factor
         
         if self.learn_continuous_variance:
             # we exponentiate this because it has to be non-negative. 

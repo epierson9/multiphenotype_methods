@@ -423,10 +423,14 @@ class GeneralAutoencoder(DimReducer):
                                                     'valid_mean_binary_loss':valid_mean_binary_loss,
                                                     'valid_mean_continuous_loss':valid_mean_continuous_loss,
                                                     'valid_mean_reg_loss':valid_mean_reg_loss})
-                                                     
+                     
+                    # print out various diagnostics so we can make sure the model isn't going haywire. 
                     if self.learn_continuous_variance:
                         continuous_variance = np.exp(self.sess.run(self.log_continuous_variance)[0])
                         print("Continuous variance is %2.3f" % continuous_variance)
+                    if self.learn_aging_rate_scaling_factor_from_data:
+                        aging_rate_scaling_factor = self.sess.run(self.aging_rate_scaling_factor)[0]
+                        print("Aging rate scaling factor is %2.3f" % aging_rate_scaling_factor)
                     if 'encoder_h0_sigma' in self.weights:
                         # make sure latent state for VAE looks ok by printing out diagnostics
                         if self.include_age_in_encoder_input:
