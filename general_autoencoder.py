@@ -8,6 +8,7 @@ import time
 from scipy.stats import pearsonr, linregress
 from scipy.special import expit
 import copy
+import random
 
 class GeneralAutoencoder(DimReducer):
     """
