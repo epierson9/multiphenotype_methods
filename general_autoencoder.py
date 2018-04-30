@@ -32,7 +32,7 @@ class GeneralAutoencoder(DimReducer):
         is_rate_of_aging_model=False):
 
         self.need_ages = need_ages # whether ages are needed to compute loss or other quantities. 
-        assert age_preprocessing_method in ['subtract_a_constant', 'divide_by_a_constant']
+        assert age_preprocessing_method in ['subtract_a_constant', 'divide_by_a_constant', 'subtract_about_40_and_divide_by_30']
         self.age_preprocessing_method = age_preprocessing_method
         self.include_age_in_encoder_input = include_age_in_encoder_input 
         # include_age_in_encoder_input is whether age is used to approximate the posterior over Z. 
@@ -144,9 +144,13 @@ class GeneralAutoencoder(DimReducer):
         raise NotImplementedError
         
     def age_preprocessing_function(self, ages):
-        # two possibilities: either subtract a constant (to roughly zero-mean ages) 
-        # or divide by a constant (to keep age roughly on the same-scale as the other features)
-        # in both cases, we hard-code the constant in rather than deriving from data 
+        # three possibilities: 
+        # 1. subtract a constant (to roughly zero-mean ages) 
+        # 2. divide by a constant (to keep age roughly on the same-scale as the other features)
+        # 3. subtract about 40 and divide by 30 -- this is to make ages start at 0 and be on the same scale as other features, 
+        # useful for rate of aging methods. We subtract 39.9 rather than 40 because otherwise we have 0/0 errors. 
+        # this is hacky but should work. 
+        # in all cases, we hard-code the constants in rather than deriving from data 
         # to avoid weird bugs if we train on people with young ages or something and then test on another group. 
         # the constant is chosen for UKBB data, which has most respondents 40 - 70. 
         
@@ -154,6 +158,8 @@ class GeneralAutoencoder(DimReducer):
             ages = ages - 55. 
         elif self.age_preprocessing_method == 'divide_by_a_constant':
             ages = ages / 70. 
+        elif self.age_preprocessing_method == 'subtract_about_40_and_divide_by_30':
+            ages = (ages - 39.9) / 30.
         else:
             raise Exception("Invalid age processing method")
         return np.array(ages)

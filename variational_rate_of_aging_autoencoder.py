@@ -25,15 +25,18 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
                  k_age,
                  sparsity_weighting=0,
                  aging_rate_scaling_factor=.1,
+                 age_preprocessing_method='subtract_about_40_and_divide_by_30',
+                 # for rate of aging autoencoders we default to starting age at (approximately) 0 because
+                 # it seems safer to only assume linear movement through Z-space over the range where we have data. 
                  **kwargs):
         super(VariationalRateOfAgingAutoencoder, self).__init__(is_rate_of_aging_model=True,
+                                                                age_preprocessing_method=age_preprocessing_method,
                                                                 **kwargs)   
         self.k_age = k_age
         assert self.k >= self.k_age
         self.need_ages = True
         self.sparsity_weighting = sparsity_weighting
         self.can_calculate_Z_mu = True
-        self.age_preprocessing_method = 'divide_by_a_constant' # important not to zero-mean age here. 
         # otherwise we end up with people with negative ages, which will mess up the interpretation of the aging rate. 
         # we divide by a constant to put age on roughly the same scale as the other features. 
 
