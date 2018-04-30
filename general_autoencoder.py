@@ -19,7 +19,7 @@ class GeneralAutoencoder(DimReducer):
     def __init__(self, 
         learning_rate=0.01,
         max_epochs=300, 
-        random_seed=0, 
+        random_seed=None, 
         binary_loss_weighting=1.0,
         non_linearity='relu', 
         batch_size=128,
@@ -37,6 +37,11 @@ class GeneralAutoencoder(DimReducer):
         self.include_age_in_encoder_input = include_age_in_encoder_input 
         # include_age_in_encoder_input is whether age is used to approximate the posterior over Z. 
         # Eg, we need this for rate-of-aging autoencoder. 
+        
+        # set random seed for reproducibility, but if it's None, the default, 
+        # choose it randomly so we don't inadvertently test the same model over and over again in simulations. 
+        if random_seed is None:
+            random_seed = random.randint(0, int(1e6))
         
         self.can_calculate_Z_mu = can_calculate_Z_mu # does the variable Z_mu make any sense for the model. 
         
