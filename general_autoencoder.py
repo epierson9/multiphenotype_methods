@@ -89,6 +89,8 @@ class GeneralAutoencoder(DimReducer):
         self.continuous_feature_idxs = None
         self.feature_names = None
         self.lon_loss_weighting_factor = None
+        
+        
                     
     def data_preprocessing_function(self, df):
         # this function is used to process multiple dataframes so make sure that they are in the same format
@@ -138,7 +140,7 @@ class GeneralAutoencoder(DimReducer):
         return binary_features, continuous_features
         
     def glorot_init(self, shape):
-        return tf.random_normal(shape=shape, stddev=tf.sqrt(2. / shape[0]))
+        return tf.random_normal(shape=shape, stddev=tf.sqrt(2. / shape[0]), seed=self.random_seed)
  
     def init_network(self):
         raise NotImplementedError
@@ -374,6 +376,7 @@ class GeneralAutoencoder(DimReducer):
 
             params = self.sess.run(self.weights)
             print('Norm of params: %s' % np.linalg.norm(params['encoder_h0']))
+                
             for epoch in range(self.max_epochs):
                 t0 = time.time()
 

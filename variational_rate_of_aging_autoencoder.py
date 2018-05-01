@@ -176,7 +176,9 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
         if self.learn_aging_rate_scaling_factor_from_data:
             # we exponentiate this because it has to be non-negative. 
             print("Learning aging rate scaling factor from data.")
-            self.log_aging_rate_scaling_factor = tf.Variable(tf.random_normal(shape=[1], stddev=.1))
+            self.log_aging_rate_scaling_factor = tf.Variable(tf.random_normal(shape=[1], 
+                                                                              stddev=.1, 
+                                                                              seed=self.random_seed))
             self.aging_rate_scaling_factor = tf.exp(self.log_aging_rate_scaling_factor)
         else:
             print("Setting aging rate scaling factor to %2.3f" % self.preset_aging_rate_scaling_factor)
