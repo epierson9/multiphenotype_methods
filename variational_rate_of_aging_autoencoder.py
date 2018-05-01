@@ -64,7 +64,12 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
         # sample age components.
         preprocessed_age = self.age_preprocessing_function(age)
         log_unscaled_aging_rate = np.random.multivariate_normal(mean = np.zeros([self.k_age,]), cov = np.eye(self.k_age), size = n)
-        aging_rate = np.exp(self.aging_rate_scaling_factor * log_unscaled_aging_rate)
+        if self.learn_aging_rate_scaling_factor_from_data:
+            aging_rate_scaling_factor = self.sess.run(self.aging_rate_scaling_factor)[0]
+        else:
+            aging_rate_scaling_factor = self.aging_rate_scaling_factor
+            
+        aging_rate = np.exp(aging_rate_scaling_factor * log_unscaled_aging_rate)
         Z_age = preprocessed_age * aging_rate
         
         # sample non-age components.
