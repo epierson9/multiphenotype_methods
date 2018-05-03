@@ -24,9 +24,10 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
     def __init__(self,
                  k_age,
                  sparsity_weighting=0,
-                 preset_aging_rate_scaling_factor=None,
-                 learn_aging_rate_scaling_factor_from_data=True,
-                 age_preprocessing_method='subtract_about_40_and_divide_by_30',
+                 preset_aging_rate_scaling_factor=.1,
+                 learn_aging_rate_scaling_factor_from_data=False,
+                 age_preprocessing_method='divide_by_a_constant',
+                 weight_constraint_implementation=None,
                  # for rate of aging autoencoders we default to starting age at (approximately) 0 because
                  # it seems safer to only assume linear movement through Z-space over the range where we have data. 
                  **kwargs):
@@ -35,11 +36,18 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
                                                                 **kwargs)   
         self.k_age = k_age
         assert self.k >= self.k_age
+        assert weight_constraint_implementation in [None, 'take_absolute_value']
         self.need_ages = True
         self.sparsity_weighting = sparsity_weighting
         self.can_calculate_Z_mu = True
-
+        self.weight_constraint_implementation = weight_constraint_implementation
         self.include_age_in_encoder_input = True
+        
+        if self.weight_constraint_implementation is None:
+            self.weight_preprocessing_fxn = tf.identity
+        elif self.weight_constraint_implementation == 'take_absolute_value':
+            self.weight_preprocessing_fxn = tf.abs
+        print("Weight constraint method is %s" % self.weight_constraint_implementation)
         
         # we can either preset the aging_rate_scaling_factor or learn it from the data; ensure we're only doing one of these. 
         if learn_aging_rate_scaling_factor_from_data:
@@ -98,26 +106,36 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
         
         num_layers = len(self.encoder_layer_sizes)
         # Get mu.  
-        mu = X_with_age
-        for idx in range(num_layers):
-            mu = tf.matmul(mu, self.weights['encoder_h%i' % (idx)]) \
-                + self.biases['encoder_b%i' % (idx)]
-            # No non-linearity on the last layer
-            if idx != num_layers - 1:
-                mu = self.non_linearity(mu)
-        encoder_mu = mu
+        encoder_mus = {} # stores one mu for age state, one for residual.
+        for encoder_name in ['Z_age', 'residual']:
+            mu = X_with_age
+            for idx in range(num_layers):
+                W = self.weights['encoder_%s_h%i' % (encoder_name, idx)]
+                if encoder_name == 'Z_age':
+                    W = self.weight_preprocessing_fxn(W) # constrain weights on encoder means. 
+                
+                mu = tf.matmul(mu, W) + self.biases['encoder_%s_b%i' % (encoder_name, idx)]
+                # No non-linearity on the last layer
+                if idx != num_layers - 1:
+                    mu = self.non_linearity(mu)
+            encoder_mus[encoder_name] = mu
+        encoder_mu = tf.concat([encoder_mus['Z_age'], encoder_mus['residual']], axis=1)
 
         # Get sigma
-        sigma = X_with_age
-        for idx in range(num_layers):
-            sigma = tf.matmul(sigma, self.weights['encoder_h%i_sigma' % (idx)]) \
-                + self.biases['encoder_b%i_sigma' % (idx)]
-            # No non-linearity on the last layer
-            if idx != num_layers - 1:
-                sigma = self.non_linearity(sigma)
-        sigma = sigma * self.sigma_scaling # scale so sigma doesn't explode when we exponentiate it. 
-        sigma = tf.exp(sigma)
-        encoder_sigma = sigma
+        encoder_sigmas = {}
+        for encoder_name in ['Z_age', 'residual']:
+            sigma = X_with_age
+            for idx in range(num_layers):
+                sigma = tf.matmul(sigma, 
+                                  self.weights['encoder_%s_h%i_sigma' % (encoder_name, idx)]) \
+                    + self.biases['encoder_%s_b%i_sigma' % (encoder_name, idx)]
+                # No non-linearity on the last layer
+                if idx != num_layers - 1:
+                    sigma = self.non_linearity(sigma)
+            sigma = sigma * self.sigma_scaling # scale so sigma doesn't explode when we exponentiate it. 
+            sigma = tf.exp(sigma)
+            encoder_sigmas[encoder_name] = sigma
+        encoder_sigma = tf.concat([encoder_sigmas['Z_age'], encoder_sigmas['residual']], axis=1)
 
         # Sample from N(mu, sigma). The first k_age components are the log unscaled aging rate
         # the components after that are the residual (Z_non_age, just as before)
@@ -194,22 +212,32 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
             # we exponentiate this because it has to be non-negative. 
             self.log_continuous_variance = tf.Variable(self.initialization_function([1]))
         
-        # Encoder layers -- the same.       
-        for encoder_layer_idx, encoder_layer_size in enumerate(self.encoder_layer_sizes):
-            if encoder_layer_idx == 0:
-                input_dim = len(self.feature_names) + self.include_age_in_encoder_input # if we include age in input, need one extra feature. 
-            else:
-                input_dim = self.encoder_layer_sizes[encoder_layer_idx - 1]
-            output_dim = self.encoder_layer_sizes[encoder_layer_idx]
-            print("Added encoder layer with input dimension %i and output dimension %i" % (input_dim, output_dim))
-            self.weights['encoder_h%i' % encoder_layer_idx] = tf.Variable(
-                self.initialization_function([input_dim, output_dim]))
-            self.biases['encoder_b%i' % encoder_layer_idx] = tf.Variable(
-                self.initialization_function([output_dim]))
-            self.weights['encoder_h%i_sigma' % encoder_layer_idx] = tf.Variable(
-                self.initialization_function([input_dim, output_dim]))
-            self.biases['encoder_b%i_sigma' % encoder_layer_idx] = tf.Variable(
-                self.initialization_function([output_dim])) 
+        # Encoder layers -- the same. 
+        for encoder_name in ['Z_age', 'residual']:
+            for encoder_layer_idx, encoder_layer_size in enumerate(self.encoder_layer_sizes):
+                if encoder_layer_idx == 0:
+                    input_dim = len(self.feature_names) + self.include_age_in_encoder_input # if we include age in input, need one extra feature. 
+                else:
+                    input_dim = self.encoder_layer_sizes[encoder_layer_idx - 1]
+                    
+                if encoder_layer_idx == len(self.encoder_layer_sizes) - 1: 
+                    if encoder_name == 'Z_age':
+                        output_dim = self.k_age
+                    else:
+                        output_dim = self.k - self.k_age
+                else:
+                    output_dim = self.encoder_layer_sizes[encoder_layer_idx]
+                print("Added encoder layer for %s with input dimension %i and output dimension %i" % (encoder_name, 
+                                                                                                      input_dim, 
+                                                                                                      output_dim))
+                self.weights['encoder_%s_h%i' % (encoder_name, encoder_layer_idx)] = tf.Variable(
+                    self.initialization_function([input_dim, output_dim]))
+                self.biases['encoder_%s_b%i' % (encoder_name, encoder_layer_idx)] = tf.Variable(
+                    self.initialization_function([output_dim]))
+                self.weights['encoder_%s_h%i_sigma' % (encoder_name, encoder_layer_idx)] = tf.Variable(
+                    self.initialization_function([input_dim, output_dim]))
+                self.biases['encoder_%s_b%i_sigma' % (encoder_name, encoder_layer_idx)] = tf.Variable(
+                    self.initialization_function([output_dim])) 
 
         # Decoder layers -- here, we need to split out the age state and the residual. 
         # so the decoder produces f(Z_age) + g(residual)
@@ -244,8 +272,11 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
         residual = Z[:, self.k_age:]
         
         for idx in range(num_layers):
-            Z_age = tf.matmul(Z_age, self.weights['decoder_Z_age_h%i' % idx]) \
+            Z_age = tf.matmul(Z_age, 
+                              self.weight_preprocessing_fxn(self.weights['decoder_Z_age_h%i' % idx])) \
                 + self.biases['decoder_Z_age_b%i' % idx]
+                
+            # no weight constraints on residual decoder. 
             residual = tf.matmul(residual, self.weights['decoder_residual_h%i' % idx]) \
                 + self.biases['decoder_residual_b%i' % idx]
             # No non-linearity on the last layer

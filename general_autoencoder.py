@@ -376,7 +376,7 @@ class GeneralAutoencoder(DimReducer):
             n_epochs_without_improvement = 0
 
             params = self.sess.run(self.weights)
-            print('Norm of params: %s' % np.linalg.norm(params['encoder_h0']))
+            #print('Norm of params: %s' % np.linalg.norm(params['decoder_h0']))
             if self.learn_aging_rate_scaling_factor_from_data:
                 aging_rate_scaling_factor = self.sess.run(self.aging_rate_scaling_factor)[0]
                 print("Aging rate scaling factor initialization is %2.3f" % aging_rate_scaling_factor)
