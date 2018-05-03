@@ -41,6 +41,7 @@ class GeneralAutoencoder(DimReducer):
         
         # set random seed for reproducibility, but if it's None, the default, 
         # choose it randomly so we don't inadvertently test the same model over and over again in simulations. 
+        
         if random_seed is None:
             random_seed = random.randint(0, int(1e6))
         
@@ -157,7 +158,7 @@ class GeneralAutoencoder(DimReducer):
         # 2. divide by a constant (to keep age roughly on the same-scale as the other features)
         # 3. subtract about 40 and divide by 30 -- this is to make ages start at 0 and be on the same scale as other features, 
         # useful for rate of aging methods. We subtract 39.9 rather than 40 because otherwise we have 0/0 errors. 
-        # this is hacky but should work. 
+        # this is hacky but should work.  
         # in all cases, we hard-code the constants in rather than deriving from data 
         # to avoid weird bugs if we train on people with young ages or something and then test on another group. 
         # the constant is chosen for UKBB data, which has most respondents 40 - 70. 
