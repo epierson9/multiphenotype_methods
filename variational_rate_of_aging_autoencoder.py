@@ -215,11 +215,14 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
         # Encoder layers -- the same. 
         for encoder_name in ['Z_age', 'residual']:
             for encoder_layer_idx, encoder_layer_size in enumerate(self.encoder_layer_sizes):
+                # require a special case for the first layer input size
                 if encoder_layer_idx == 0:
                     input_dim = len(self.feature_names) + self.include_age_in_encoder_input # if we include age in input, need one extra feature. 
                 else:
                     input_dim = self.encoder_layer_sizes[encoder_layer_idx - 1]
-                    
+                
+                # also require a special case for the last encoder layer
+                # depending on whether it is the age encoder or the residual encoder. 
                 if encoder_layer_idx == len(self.encoder_layer_sizes) - 1: 
                     if encoder_name == 'Z_age':
                         output_dim = self.k_age
