@@ -29,6 +29,7 @@ class GeneralAutoencoder(DimReducer):
         uses_longitudinal_data=False,
         can_calculate_Z_mu=True,
         need_ages=False,
+        initialization_scaling=1,
         regularization_weighting_schedule={'schedule_type':'constant', 'constant':1}, 
         is_rate_of_aging_model=False):
 
@@ -85,6 +86,7 @@ class GeneralAutoencoder(DimReducer):
         self.learning_rate = learning_rate
         self.optimization_method = tf.train.AdamOptimizer
         self.initialization_function = self.glorot_init
+        self.initialization_scaling = initialization_scaling # how much should we scale the initialization by to keep from exploding. 
         self.all_losses_by_epoch = []
         self.binary_feature_idxs = None
         self.continuous_feature_idxs = None
@@ -141,7 +143,7 @@ class GeneralAutoencoder(DimReducer):
         return binary_features, continuous_features
         
     def glorot_init(self, shape):
-        return tf.random_normal(shape=shape, stddev=tf.sqrt(2. / shape[0]), seed=self.random_seed)
+        return self.initialization_scaling*tf.random_normal(shape=shape, stddev=tf.sqrt(2. / shape[0]), seed=self.random_seed)
  
     def init_network(self):
         raise NotImplementedError

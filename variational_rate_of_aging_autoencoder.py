@@ -27,13 +27,16 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
                  preset_aging_rate_scaling_factor=.1,
                  learn_aging_rate_scaling_factor_from_data=False,
                  age_preprocessing_method='divide_by_a_constant',
+                 initialization_scaling=.1,
                  weight_constraint_implementation=None,
                  # for rate of aging autoencoders we default to starting age at (approximately) 0 because
                  # it seems safer to only assume linear movement through Z-space over the range where we have data. 
                  **kwargs):
         super(VariationalRateOfAgingAutoencoder, self).__init__(is_rate_of_aging_model=True,
                                                                 age_preprocessing_method=age_preprocessing_method,
+                                                                initialization_scaling=initialization_scaling,
                                                                 **kwargs)   
+        print("initialization scaling is %2.3f" % self.initialization_scaling)
         self.k_age = k_age
         assert self.k >= self.k_age
         assert weight_constraint_implementation in [None, 'take_absolute_value']
