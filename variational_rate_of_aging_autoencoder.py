@@ -29,6 +29,7 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
                  age_preprocessing_method='divide_by_a_constant',
                  initialization_scaling=.1,
                  weight_constraint_implementation=None,
+                 constrain_encoder=False,
                  # for rate of aging autoencoders we default to starting age at (approximately) 0 because
                  # it seems safer to only assume linear movement through Z-space over the range where we have data. 
                  **kwargs):
@@ -45,6 +46,7 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
         self.can_calculate_Z_mu = True
         self.weight_constraint_implementation = weight_constraint_implementation
         self.include_age_in_encoder_input = True
+        self.constrain_encoder = constrain_encoder
         
         if self.weight_constraint_implementation is None:
             self.weight_preprocessing_fxn = tf.identity
@@ -114,7 +116,7 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
             mu = X_with_age
             for idx in range(num_layers):
                 W = self.weights['encoder_%s_h%i' % (encoder_name, idx)]
-                if encoder_name == 'Z_age':
+                if (encoder_name == 'Z_age') and (self.constrain_encoder):
                     W = self.weight_preprocessing_fxn(W) # constrain weights on encoder means. 
                 
                 mu = tf.matmul(mu, W) + self.biases['encoder_%s_b%i' % (encoder_name, idx)]
