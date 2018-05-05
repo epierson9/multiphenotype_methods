@@ -37,6 +37,7 @@ class VariationalRateOfAgingMonotonicAutoencoder(VariationalRateOfAgingAutoencod
         super(VariationalRateOfAgingMonotonicAutoencoder, self).init_network()
     
         n_polynomial_terms = len(self.polynomial_powers_to_fit)
+        self.age_decoder_linear_weights = tf.Variable(self.initialization_function([self.k_age, len(self.feature_names)]))
         self.nonlinearity_weights = tf.Variable(self.initialization_function([n_polynomial_terms, len(self.feature_names)]))
     
     def decode(self, Z):
@@ -59,18 +60,17 @@ class VariationalRateOfAgingMonotonicAutoencoder(VariationalRateOfAgingAutoencod
         
         # Now construct the age term.
         # 1. Positive linear transformation
-        Z_age = tf.matmul(Z_age, self.weight_preprocessing_fxn(self.weights['decoder_Z_age_h0']))
+        Z_age = tf.matmul(Z_age, self.weight_preprocessing_fxn(self.age_decoder_linear_weights))
         # 2. Polynomial transformation (positive coefficients)
         for idx in range(len(self.polynomial_powers_to_fit)):
             weights_for_polynomial_term = self.weight_preprocessing_fxn(self.nonlinearity_weights[idx, :])
             polynomial_term = tf.pow(Z_age, self.polynomial_powers_to_fit[idx]) * weights_for_polynomial_term # broadcasting
             if idx == 0:
-                summed_polynomial_terms = polynomial_term
+                summed_polynomial_age_terms = polynomial_term
             else:
-                summed_polynomial_terms = summed_polynomial_terms + polynomial_term
-        # 3. Add bias. 
-        age_output = summed_polynomial_terms + self.biases['decoder_Z_age_b0']
+                summed_polynomial_age_terms = summed_polynomial_age_terms + polynomial_term
+        # No need for bias because we already have that in the residual term. 
         
-        X_with_logits = age_output + residual
+        X_with_logits = summed_polynomial_age_terms + residual
         return X_with_logits
 
