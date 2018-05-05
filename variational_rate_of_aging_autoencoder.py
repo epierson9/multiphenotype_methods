@@ -40,7 +40,7 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
         print("initialization scaling is %2.3f" % self.initialization_scaling)
         self.k_age = k_age
         assert self.k >= self.k_age
-        assert weight_constraint_implementation in [None, 'take_absolute_value']
+        assert weight_constraint_implementation in [None, 'take_absolute_value', 'clip_at_zero']
         self.need_ages = True
         self.sparsity_weighting = sparsity_weighting
         self.can_calculate_Z_mu = True
@@ -52,6 +52,8 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
             self.weight_preprocessing_fxn = tf.identity
         elif self.weight_constraint_implementation == 'take_absolute_value':
             self.weight_preprocessing_fxn = tf.abs
+        elif self.weight_constraint_implementation == 'clip_at_zero':
+            self.weight_preprocessing_fxn = lambda x:tf.clip_by_value(x, clip_value_min=0, clip_value_max=np.inf)
         print("Weight constraint method is %s" % self.weight_constraint_implementation)
         
         # we can either preset the aging_rate_scaling_factor or learn it from the data; ensure we're only doing one of these. 
@@ -196,7 +198,7 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
     
     def init_network(self):
         """
-        the only difference here is with the decoder, since we need to split out the age state and the residual. 
+        both the encoder and the decoder have separate networks for the residual and the age state. 
         """
         self.weights = {}
         self.biases = {} 
