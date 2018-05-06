@@ -53,7 +53,7 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
         elif self.weight_constraint_implementation == 'take_absolute_value':
             self.weight_preprocessing_fxn = tf.abs
         elif self.weight_constraint_implementation == 'clip_at_zero':
-            self.weight_preprocessing_fxn = lambda x:tf.clip_by_value(x, clip_value_min=0, clip_value_max=np.inf)
+            self.weight_preprocessing_fxn = lambda x:tf.clip_by_value(x, clip_value_min=1e-6, clip_value_max=1e5) # don't want weights to be exactly 0. 
         print("Weight constraint method is %s" % self.weight_constraint_implementation)
         
         # we can either preset the aging_rate_scaling_factor or learn it from the data; ensure we're only doing one of these. 

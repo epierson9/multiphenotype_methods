@@ -28,7 +28,7 @@ class VariationalRateOfAgingMonotonicAutoencoder(VariationalRateOfAgingAutoencod
         self.polynomial_powers_to_fit = polynomial_powers_to_fit
         assert len(self.polynomial_powers_to_fit) > 0
         assert (np.array(self.polynomial_powers_to_fit) > 0).all()
-        
+        assert 1 in list(self.polynomial_powers_to_fit) 
     
     def init_network(self):
         """
@@ -38,7 +38,10 @@ class VariationalRateOfAgingMonotonicAutoencoder(VariationalRateOfAgingAutoencod
     
         n_polynomial_terms = len(self.polynomial_powers_to_fit)
         self.age_decoder_linear_weights = tf.Variable(self.initialization_function([self.k_age, len(self.feature_names)]))
-        self.nonlinearity_weights = tf.Variable(self.initialization_function([n_polynomial_terms, len(self.feature_names)]))
+        # initialize nonlinearity matrix carefully -- approximately linear. 
+        nonlinearity_matrix = .01 * np.random.random([n_polynomial_terms, len(self.feature_names)]).astype('float32')
+        nonlinearity_matrix[list(self.polynomial_powers_to_fit).index(1), :] = 1
+        self.nonlinearity_weights = tf.Variable(initial_value=nonlinearity_matrix)#self.initialization_function([n_polynomial_terms, len(self.feature_names)]))
     
     def decode(self, Z):
         """

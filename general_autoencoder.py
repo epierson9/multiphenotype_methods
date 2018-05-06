@@ -590,7 +590,7 @@ class GeneralAutoencoder(DimReducer):
                                             ages=ages, 
                                             idxs=idxs, 
                                             age_adjusted_data=age_adjusted_data)
-            self.sess.run([self.optimizer], feed_dict=feed_dict)           
+            self.sess.run([self.optimizer], feed_dict=feed_dict)
 
     def reconstruct_data(self, Z_df):
         """
