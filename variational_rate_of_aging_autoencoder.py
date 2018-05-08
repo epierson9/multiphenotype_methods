@@ -69,7 +69,7 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
     def set_up_regularization_loss_structure(self):
         self.reg_loss = self.get_regularization_loss(self.encoder_mu, self.encoder_sigma) 
         
-    def encode(self, X, ages):  
+    def encode(self, X, ages, encoder_prefix=''):  
         # note that we use similar notation -- mu, sigma -- here as with the standard autoencoder 
         # and essentially the same procedure for generating both (with the same loss function)
         # but mu and sigma have different interpretations for the age components. 
@@ -77,16 +77,15 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
         # so we have Z_age = age * exp(self.aging_rate_scaling_factor * log_unscaled_aging_rate) 
         # where log_unscaled_aging_rate ~ N(0, 1). 
         
-        
         # concatenate age onto X, since we use both to generate the posterior over Z.
         X_with_age = tf.concat([X, tf.reshape(ages, [-1, 1])], axis=1) # make age 2d. 
-        
+
         num_layers = len(self.encoder_layer_sizes)
         # Get mu.  
         mu = X_with_age
         for idx in range(num_layers):
-            mu = tf.matmul(mu, self.weights['encoder_h%i' % (idx)]) \
-                + self.biases['encoder_b%i' % (idx)]
+            mu = tf.matmul(mu, self.weights['%sencoder_h%i' % (encoder_prefix, idx)]) \
+                + self.biases['%sencoder_b%i' % (encoder_prefix, idx)]
             # No non-linearity on the last layer
             if idx != num_layers - 1:
                 mu = self.non_linearity(mu)
@@ -95,8 +94,8 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
         # Get sigma
         sigma = X_with_age
         for idx in range(num_layers):
-            sigma = tf.matmul(sigma, self.weights['encoder_h%i_sigma' % (idx)]) \
-                + self.biases['encoder_b%i_sigma' % (idx)]
+            sigma = tf.matmul(sigma, self.weights['%sencoder_h%i_sigma' % (encoder_prefix, idx)]) \
+                + self.biases['%sencoder_b%i_sigma' % (encoder_prefix, idx)]
             # No non-linearity on the last layer
             if idx != num_layers - 1:
                 sigma = self.non_linearity(sigma)
