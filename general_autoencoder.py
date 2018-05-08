@@ -72,6 +72,8 @@ class GeneralAutoencoder(DimReducer):
             self.non_linearity = tf.nn.sigmoid
         elif non_linearity == 'relu':
             self.non_linearity = tf.nn.relu
+        elif non_linearity == 'identity':
+            self.non_linearity = tf.identity
         else:
             raise Exception("not a valid nonlinear activation")
             
@@ -136,6 +138,9 @@ class GeneralAutoencoder(DimReducer):
  
     def init_network(self):
         raise NotImplementedError
+
+    def get_setter_ops(self):
+        raise NotImplementedError        
 
     def encode(self, X):
         raise NotImplementedError
@@ -330,9 +335,12 @@ class GeneralAutoencoder(DimReducer):
                                        shape=None, 
                                        name='ages')
             self.regularization_weighting = tf.placeholder(dtype="float32", name='regularization_weighting')
+ 
             self.init_network() # set up the networks that produce the encoder and decoder. 
+            self.get_setter_ops() # set up ops that allow us to directly set network weights
             self.set_up_encoder_structure() # set up the basic call signature and return values for the encoder. 
             self.set_up_regularization_loss_structure() # set up the basic call signature for the regularization loss. 
+
             self.Xr = self.decode(self.Z)
             
             # set up losses. self.reg_loss has already been defined in self.set_up_regularization_loss_structure
@@ -346,7 +354,7 @@ class GeneralAutoencoder(DimReducer):
             if self.uses_longitudinal_data:
                 self.set_up_longitudinal_loss_and_optimization_structure()
                 
-            
+        
             init = tf.global_variables_initializer()
             
             # with tf.Session() as self.sess:

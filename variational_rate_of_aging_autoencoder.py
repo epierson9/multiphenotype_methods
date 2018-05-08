@@ -263,7 +263,8 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
         rate_of_aging_plus_residual = self.get_rate_of_aging_plus_residual(Z0, train_df)
         
         # compute the fast-forwarded ages. 
-        fastforwarded_ages = self.age_preprocessing_function(train_df['age_sex___age'] + np.array(years_to_move_forward))
+        ages = np.array(train_df['age_sex___age'].values, dtype=np.float32)
+        fastforwarded_ages = self.age_preprocessing_function(ages + np.array(years_to_move_forward))
         
         # project Z forward. 
         Z0_projected_forward = deepcopy(Z0)

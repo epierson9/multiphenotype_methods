@@ -60,7 +60,45 @@ class StandardAutoencoder(GeneralAutoencoder):
                 self.initialization_function([input_dim, output_dim]))
             self.biases['decoder_b%i' % decoder_layer_idx] = tf.Variable(
                 self.initialization_function([output_dim]))
-        
+
+    def get_setter_ops(self):
+        self.weights_placeholders = {}
+        self.weights_setters = {}
+        for key in self.weights:
+            self.weights_placeholders[key] = tf.placeholder(
+                tf.float32,
+                shape=self.weights[key].shape)
+            self.weights_setters[key] = tf.assign(
+                self.weights[key], 
+                self.weights_placeholders[key],
+                validate_shape=True)
+
+        self.biases_placeholders = {}
+        self.biases_setters = {}
+        for key in self.biases:
+            self.biases_placeholders[key] = tf.placeholder(
+                tf.float32,
+                shape=self.biases[key].shape)
+            self.biases_setters[key] = tf.assign(
+                self.biases[key], 
+                self.biases_placeholders[key],
+                validate_shape=True)      
+
+    def assign_weights_and_biases(self, weights, biases):
+        """
+        weights and biases are dicts that can be partially defined.
+        """
+        for key in weights:
+            assert key in self.weights
+            self.sess.run(
+                self.weights_setters[key], 
+                feed_dict={self.weights_placeholders[key]:weights[key]})
+
+        for key in biases:
+            assert key in self.biases
+            self.sess.run(
+                self.biases_setters[key], 
+                feed_dict={self.biases_placeholders[key]:biases[key]})            
 
     def encode(self, X):  
         num_layers = len(self.encoder_layer_sizes)
@@ -94,7 +132,7 @@ class StandardAutoencoder(GeneralAutoencoder):
         else:
             if self.learn_continuous_variance:
                 # if we do not assume the variance is one, the continuous loss is the 
-                # negative Gaussian log likelihood with all constant terms. 
+                # negative Gaussian log likelihood with all constant terms.
                 continuous_variance = tf.exp(self.log_continuous_variance)
                 continuous_loss = (
                     .5 * (
