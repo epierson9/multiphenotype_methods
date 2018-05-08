@@ -45,6 +45,7 @@ class GeneralAutoencoder(DimReducer):
         
         if random_seed is None:
             random_seed = random.randint(0, int(1e6))
+        print("Model random seed is %s" % random_seed)
         
         self.can_calculate_Z_mu = can_calculate_Z_mu # does the variable Z_mu make any sense for the model. 
         
