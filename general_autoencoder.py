@@ -8,6 +8,7 @@ import time
 from scipy.stats import pearsonr, linregress
 from scipy.special import expit
 import copy
+import random
 
 class GeneralAutoencoder(DimReducer):
     """
@@ -19,7 +20,7 @@ class GeneralAutoencoder(DimReducer):
     def __init__(self, 
         learning_rate=0.01,
         max_epochs=300, 
-        random_seed=0, 
+        random_seed=None, 
         binary_loss_weighting=1.0,
         non_linearity='relu', 
         batch_size=128,
@@ -28,15 +29,23 @@ class GeneralAutoencoder(DimReducer):
         uses_longitudinal_data=False,
         can_calculate_Z_mu=True,
         need_ages=False,
+        initialization_scaling=1,
         regularization_weighting_schedule={'schedule_type':'constant', 'constant':1}, 
         is_rate_of_aging_model=False):
 
         self.need_ages = need_ages # whether ages are needed to compute loss or other quantities. 
-        assert age_preprocessing_method in ['subtract_a_constant', 'divide_by_a_constant']
+        assert age_preprocessing_method in ['subtract_a_constant', 'divide_by_a_constant', 'subtract_about_40_and_divide_by_30']
         self.age_preprocessing_method = age_preprocessing_method
         self.include_age_in_encoder_input = include_age_in_encoder_input 
         # include_age_in_encoder_input is whether age is used to approximate the posterior over Z. 
         # Eg, we need this for rate-of-aging autoencoder. 
+        
+        # set random seed for reproducibility, but if it's None, the default, 
+        # choose it randomly so we don't inadvertently test the same model over and over again in simulations. 
+        
+        if random_seed is None:
+            random_seed = random.randint(0, int(1e6))
+        print("Model random seed is %s" % random_seed)
         
         self.can_calculate_Z_mu = can_calculate_Z_mu # does the variable Z_mu make any sense for the model. 
         
@@ -80,11 +89,14 @@ class GeneralAutoencoder(DimReducer):
         self.learning_rate = learning_rate
         self.optimization_method = tf.train.AdamOptimizer
         self.initialization_function = self.glorot_init
+        self.initialization_scaling = initialization_scaling # how much should we scale the initialization by to keep from exploding. 
         self.all_losses_by_epoch = []
         self.binary_feature_idxs = None
         self.continuous_feature_idxs = None
         self.feature_names = None
         self.lon_loss_weighting_factor = None
+        
+        
                     
     def data_preprocessing_function(self, df):
         # this function is used to process multiple dataframes so make sure that they are in the same format
@@ -134,7 +146,7 @@ class GeneralAutoencoder(DimReducer):
         return binary_features, continuous_features
         
     def glorot_init(self, shape):
-        return tf.random_normal(shape=shape, stddev=tf.sqrt(2. / shape[0]))
+        return self.initialization_scaling*tf.random_normal(shape=shape, stddev=tf.sqrt(2. / shape[0]), seed=self.random_seed)
  
     def init_network(self):
         raise NotImplementedError
@@ -149,9 +161,13 @@ class GeneralAutoencoder(DimReducer):
         raise NotImplementedError
         
     def age_preprocessing_function(self, ages):
-        # two possibilities: either subtract a constant (to roughly zero-mean ages) 
-        # or divide by a constant (to keep age roughly on the same-scale as the other features)
-        # in both cases, we hard-code the constant in rather than deriving from data 
+        # three possibilities: 
+        # 1. subtract a constant (to roughly zero-mean ages) 
+        # 2. divide by a constant (to keep age roughly on the same-scale as the other features)
+        # 3. subtract about 40 and divide by 30 -- this is to make ages start at 0 and be on the same scale as other features, 
+        # useful for rate of aging methods. We subtract 39.9 rather than 40 because otherwise we have 0/0 errors. 
+        # this is hacky but should work.  
+        # in all cases, we hard-code the constants in rather than deriving from data 
         # to avoid weird bugs if we train on people with young ages or something and then test on another group. 
         # the constant is chosen for UKBB data, which has most respondents 40 - 70. 
         
@@ -159,6 +175,8 @@ class GeneralAutoencoder(DimReducer):
             ages = ages - 55. 
         elif self.age_preprocessing_method == 'divide_by_a_constant':
             ages = ages / 70. 
+        elif self.age_preprocessing_method == 'subtract_about_40_and_divide_by_30':
+            ages = (ages - 39.9) / 30.
         else:
             raise Exception("Invalid age processing method")
         return np.array(ages)
@@ -369,7 +387,11 @@ class GeneralAutoencoder(DimReducer):
             n_epochs_without_improvement = 0
 
             params = self.sess.run(self.weights)
-            print('Norm of params: %s' % np.linalg.norm(params['encoder_h0']))
+            #print('Norm of params: %s' % np.linalg.norm(params['decoder_h0']))
+            if self.learn_aging_rate_scaling_factor_from_data:
+                aging_rate_scaling_factor = self.sess.run(self.aging_rate_scaling_factor)[0]
+                print("Aging rate scaling factor initialization is %2.3f" % aging_rate_scaling_factor)
+                
             for epoch in range(self.max_epochs):
                 t0 = time.time()
 
@@ -420,10 +442,14 @@ class GeneralAutoencoder(DimReducer):
                                                     'valid_mean_binary_loss':valid_mean_binary_loss,
                                                     'valid_mean_continuous_loss':valid_mean_continuous_loss,
                                                     'valid_mean_reg_loss':valid_mean_reg_loss})
-                                                     
+                     
+                    # print out various diagnostics so we can make sure the model isn't going haywire. 
                     if self.learn_continuous_variance:
                         continuous_variance = np.exp(self.sess.run(self.log_continuous_variance)[0])
                         print("Continuous variance is %2.3f" % continuous_variance)
+                    if self.learn_aging_rate_scaling_factor_from_data:
+                        aging_rate_scaling_factor = self.sess.run(self.aging_rate_scaling_factor)[0]
+                        print("Aging rate scaling factor is %2.3f" % aging_rate_scaling_factor)
                     if 'encoder_h0_sigma' in self.weights:
                         # make sure latent state for VAE looks ok by printing out diagnostics
                         if self.include_age_in_encoder_input:
@@ -573,7 +599,7 @@ class GeneralAutoencoder(DimReducer):
                                             ages=ages, 
                                             idxs=idxs, 
                                             age_adjusted_data=age_adjusted_data)
-            self.sess.run([self.optimizer], feed_dict=feed_dict)           
+            self.sess.run([self.optimizer], feed_dict=feed_dict)
 
     def reconstruct_data(self, Z_df):
         """
