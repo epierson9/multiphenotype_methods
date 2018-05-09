@@ -24,14 +24,14 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
     def __init__(self,
                  k_age,
                  sparsity_weighting=0,
-                 preset_aging_rate_scaling_factor=.1,
-                 learn_aging_rate_scaling_factor_from_data=False,
-                 age_preprocessing_method='divide_by_a_constant',
-                 initialization_scaling=.1,
-                 weight_constraint_implementation=None,
-                 constrain_encoder=False,
+                 preset_aging_rate_scaling_factor=.1,# how much scatter on the log aging rate? 
+                 learn_aging_rate_scaling_factor_from_data=False, # if true, we learn the aging rate scaling factor
                  # for rate of aging autoencoders we default to starting age at (approximately) 0 because
                  # it seems safer to only assume linear movement through Z-space over the range where we have data. 
+                 age_preprocessing_method='divide_by_a_constant',
+                 initialization_scaling=.1,
+                 weight_constraint_implementation=None, # how do we enforce monotonicity on the decoder age state? 
+                 constrain_encoder=False, # do we constrain the encoder? 
                  **kwargs):
         super(VariationalRateOfAgingAutoencoder, self).__init__(is_rate_of_aging_model=True,
                                                                 age_preprocessing_method=age_preprocessing_method,
@@ -53,7 +53,7 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
         elif self.weight_constraint_implementation == 'take_absolute_value':
             self.weight_preprocessing_fxn = tf.abs
         elif self.weight_constraint_implementation == 'clip_at_zero':
-            self.weight_preprocessing_fxn = lambda x:tf.clip_by_value(x, clip_value_min=1e-6, clip_value_max=1e5) # don't want weights to be exactly 0. 
+            self.weight_preprocessing_fxn = lambda x:tf.clip_by_value(x, clip_value_min=1e-6, clip_value_max=1e5) # don't want weights to be exactly 0; can cause derivatives to blow up when we combine with nonlinearities. 
         print("Weight constraint method is %s" % self.weight_constraint_implementation)
         
         # we can either preset the aging_rate_scaling_factor or learn it from the data; ensure we're only doing one of these. 
@@ -219,7 +219,7 @@ class VariationalRateOfAgingAutoencoder(VariationalAutoencoder):
             # we exponentiate this because it has to be non-negative. 
             self.log_continuous_variance = tf.Variable(self.initialization_function([1]))
         
-        # Encoder layers -- the same. 
+        # Encoder layers -- we split out Z_age and ersidual. 
         for encoder_name in ['Z_age', 'residual']:
             for encoder_layer_idx, encoder_layer_size in enumerate(self.encoder_layer_sizes):
                 # require a special case for the first layer input size
