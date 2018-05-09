@@ -13,19 +13,26 @@ from variational_rate_of_aging_autoencoder import VariationalRateOfAgingAutoenco
 
 class VariationalRateOfAgingMonotonicAutoencoder(VariationalRateOfAgingAutoencoder):
     """
+    We have X = residual + monotone_elementwise_nonlinearity(A*Z_age) where A is a non-negative matrix. 
+    If use_nonlinearity_prior_to_linear_layer, we feed Z_age 
+    through a monotone_elementwise_nonlinearity prior to the linear transformation. 
+    polynomial_powers_to_fit should be a list of numbers > 0 which define the polynomial powers we'll use for the nonlinearity. 
+    non_monotonic_features is a list of features we don't want to constrain to be monotonic in age. 
+    These are modeled as X = residual + f(Z_age), where f is an unconstrained decoder. 
     """    
-    
     def __init__(self, 
                  polynomial_powers_to_fit, 
                  weight_constraint_implementation='take_absolute_value', 
                  constrain_encoder=False,
                  non_monotonic_features=None,
+                 use_nonlinearity_prior_to_linear_layer=False,
                  **kwargs):
         super(VariationalRateOfAgingMonotonicAutoencoder, self).__init__(
             weight_constraint_implementation=weight_constraint_implementation,
             constrain_encoder=constrain_encoder,
             **kwargs)   
         self.polynomial_powers_to_fit = polynomial_powers_to_fit
+        self.use_nonlinearity_prior_to_linear_layer = use_nonlinearity_prior_to_linear_layer
         if non_monotonic_features is None:
             non_monotonic_features = set([])
         self.non_monotonic_features = set(non_monotonic_features)
@@ -35,8 +42,8 @@ class VariationalRateOfAgingMonotonicAutoencoder(VariationalRateOfAgingAutoencod
     
     def init_network(self):
         """
-        substantial differences with superclass here. 
-        
+        substantial differences with superclass here, specifically in the decoder. 
+        We model monotonic and non-monotonic features differently. 
         """
         super(VariationalRateOfAgingMonotonicAutoencoder, self).init_network()
         
@@ -52,9 +59,11 @@ class VariationalRateOfAgingMonotonicAutoencoder(VariationalRateOfAgingAutoencod
         all_bias_names = list(self.biases.keys())
         for k in all_weight_names:
             if 'decoder_Z_age' in k:
+                print("Deleting weight layer %s because unnecessary for monotonic autoencoder" % k)
                 del self.weights[k]
         for k in all_bias_names:
             if 'decoder_Z_age' in k:
+                print("Deleting bias layer %s because unnecessary for monotonic autoencoder" % k)
                 del self.biases[k]
 
         # make new decoder for age state. 
@@ -80,14 +89,40 @@ class VariationalRateOfAgingMonotonicAutoencoder(VariationalRateOfAgingAutoencod
         
         # now, add monotonic bit to generate monotonic features. 
         # first a linear transformation. 
+        print("Adding monotonic linear layer with input dimension %i and output dimension %i" % (self.k_age,
+                                                                                                 len(self.monotonic_idxs)))
+              
         self.age_decoder_linear_weights = tf.Variable(self.initialization_function([self.k_age, len(self.monotonic_idxs)]))
                 
-        # initialize nonlinearity matrix carefully -- approximately linear. 
+        # initialize nonlinearity matrices carefully -- approximately linear. 
+        # We initialize one for the pre-linear layer transformation, one for the post-linear layer transformation. 
         n_polynomial_terms = len(self.polynomial_powers_to_fit)
-        nonlinearity_matrix = .01 * np.random.random([n_polynomial_terms, len(self.monotonic_idxs)]).astype('float32')
-        nonlinearity_matrix[list(self.polynomial_powers_to_fit).index(1), :] = 1.
-        self.nonlinearity_weights = tf.Variable(initial_value=nonlinearity_matrix)
-        
+        self.nonlinearity_weights = {}
+        for layer_name in ['pre_linear_layer', 'post_linear_layer']:
+            if ((not self.use_nonlinearity_prior_to_linear_layer) and (layer_name == 'pre_linear_layer')):
+                continue
+            print("Adding nonlinearity %s" % layer_name)
+            if layer_name == 'pre_linear_layer':
+                n_inputs = self.k_age
+            else:
+                n_inputs = len(self.monotonic_idxs)
+            nonlinearity_matrix = .01 * np.random.random([n_polynomial_terms, n_inputs]).astype('float32')
+            nonlinearity_matrix[list(self.polynomial_powers_to_fit).index(1), :] = 1.
+            self.nonlinearity_weights[layer_name] = tf.Variable(initial_value=nonlinearity_matrix)
+    
+    def apply_polynomial_transformation(self, Z, nonlinearity_weights, polynomial_powers_to_fit):
+        """
+        small helper method. Applies the polynomial elementwise transformation to the input argument Z. 
+        """
+        for idx in range(len(polynomial_powers_to_fit)):
+            weights_for_polynomial_term = self.weight_preprocessing_fxn(nonlinearity_weights[idx, :])
+            polynomial_term = tf.pow(Z, polynomial_powers_to_fit[idx]) * weights_for_polynomial_term # broadcasting
+            if idx == 0:
+                summed_polynomial_age_terms = polynomial_term
+            else:
+                summed_polynomial_age_terms = summed_polynomial_age_terms + polynomial_term
+        return summed_polynomial_age_terms
+    
     def decode(self, Z):
         """
         we have to separately decode Z_age and the residual, then add them back together. 
@@ -104,20 +139,20 @@ class VariationalRateOfAgingMonotonicAutoencoder(VariationalRateOfAgingAutoencod
                 residual = self.non_linearity(residual)
         
         # Now construct the age term for monotonic features. 
-        # 1. Positive linear transformation. Enforce positivity with self.weight_preprocessing_fxn. 
+        # 1. If desired, positive polynomial elementwise transformation prior to linear transformation. 
         monotonic_age_term = Z[:, :self.k_age]
+        if self.use_nonlinearity_prior_to_linear_layer:
+            monotonic_age_term = self.apply_polynomial_transformation(monotonic_age_term, 
+                                                                      self.nonlinearity_weights['pre_linear_layer'], 
+                                                                      self.polynomial_powers_to_fit)
+        # 2. Positive linear transformation. Enforce positivity with self.weight_preprocessing_fxn. 
         monotonic_age_term = tf.matmul(monotonic_age_term, self.weight_preprocessing_fxn(self.age_decoder_linear_weights))
-        # 2. Polynomial transformation (positive coefficients)
-        for idx in range(len(self.polynomial_powers_to_fit)):
-            weights_for_polynomial_term = self.weight_preprocessing_fxn(self.nonlinearity_weights[idx, :])
-            polynomial_term = tf.pow(monotonic_age_term, 
-                                     self.polynomial_powers_to_fit[idx]) * weights_for_polynomial_term # broadcasting
-            if idx == 0:
-                summed_polynomial_age_terms = polynomial_term
-            else:
-                summed_polynomial_age_terms = summed_polynomial_age_terms + polynomial_term
+        
+        # 3. Positive polynomial elementwise transformation
+        monotonic_age_term = self.apply_polynomial_transformation(monotonic_age_term, 
+                                                                      self.nonlinearity_weights['post_linear_layer'], 
+                                                                      self.polynomial_powers_to_fit)        
         # No need for bias because we already have that in the residual term. 
-        monotonic_age_term = summed_polynomial_age_terms
         
         # If there are no non-monotonic features, age_term is just the monotonic age term. 
         if len(self.non_monotonic_features) == 0:
