@@ -146,7 +146,11 @@ class GeneralAutoencoder(DimReducer):
         return binary_features, continuous_features
         
     def glorot_init(self, shape):
-        return self.initialization_scaling*tf.random_normal(shape=shape, stddev=tf.sqrt(2. / shape[0]), seed=self.random_seed)
+        if shape[0] == 0: # special case in case we have an empty state.
+            stddev = 2.
+        else:
+            stddev = tf.sqrt(2. / shape[0])
+        return self.initialization_scaling*tf.random_normal(shape=shape, stddev=stddev, seed=self.random_seed)
  
     def init_network(self):
         raise NotImplementedError
