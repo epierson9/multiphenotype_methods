@@ -58,6 +58,7 @@ def partition_dataframe_into_binary_and_continuous(df, verbose=False):
     for c in df.columns:
         if c in phenotypes_to_exclude:
             continue
+        assert len(df[c].dropna()) == len(df)
         if set(df[c]) == set([False, True]):
             # this binarization should work even if df[c] is eg 1.0 or 1 rather than True. 
             if verbose:
