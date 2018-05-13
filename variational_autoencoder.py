@@ -139,7 +139,7 @@ class VariationalAutoencoder(StandardAutoencoder):
                 axis=1),
             axis=0)
         return kl_div_loss
-
+    
     def project_forward(self, train_df, years_to_move_forward, add_noise_to_Z, add_noise_to_X):
         """
         given a df and an autoencoder model, projects the train_df down into Z-space, moves it 
@@ -151,6 +151,7 @@ class VariationalAutoencoder(StandardAutoencoder):
         if add_noise_to_Z is False, Z is projected onto the mean; otherwise, it's sampled. 
         if add_noise_to_X is False, X is decoded directly from Z (ie, it is Xr); otherwise, it's sampled. 
         """
+        
         # cast years_to_move_forward to an array (I think this should be fine even if it is a scalar?)
         years_to_move_forward = np.array(years_to_move_forward)
         
@@ -177,6 +178,39 @@ class VariationalAutoencoder(StandardAutoencoder):
             
         assert projected_trajectory.shape[1] == len(self.feature_names)
         return projected_trajectory
+    
+    
+    def project_forward_by_sampling_Z_and_then_sampling_X(self, train_df, years_to_move_forward):
+        """
+        alternate way of projecting forward: sample Z from p(Z | X), then sample X. Not using this at present. 
+        """
+        # cast years_to_move_forward to an array (I think this should be fine even if it is a scalar?)
+        years_to_move_forward = np.array(years_to_move_forward)
+        
+        n_iterates = 100
+        
+        for i in range(n_iterates):
+            Z0 = self.get_projections(train_df, project_onto_mean=False)
+        
+            if (years_to_move_forward == 0).all():
+                # if we're not moving forward at all, Z0 is just Z. This is equivalent to reconstruction. 
+                # we shouldn't actually need this if-branch, but it makes what is happening a little more explicit. 
+                Z0_projected_forward = remove_id_and_get_mat(Z0)
+            else:
+                # move age components forward following the model's evolution rule. 
+                Z0_projected_forward = self.fast_forward_Z(Z0, train_df, years_to_move_forward)
+                Z0_projected_forward = remove_id_and_get_mat(Z0_projected_forward)
+            
+            sampled_X = self.sample_X_given_Z(Z0_projected_forward)
+            if i == 0:
+                projected_trajectory = sampled_X
+            else:
+                projected_trajectory = projected_trajectory + sampled_X
+
+          
+            assert projected_trajectory.shape[1] == len(self.feature_names)
+        
+        return projected_trajectory / n_iterates
     
     def fast_forward_Z(self, Z0, train_df, years_to_move_forward):
         """

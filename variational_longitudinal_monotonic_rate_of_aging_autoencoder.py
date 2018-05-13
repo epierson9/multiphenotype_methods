@@ -8,9 +8,9 @@ from dimreducer import DimReducer
 
 from general_autoencoder import GeneralAutoencoder
 from standard_autoencoder import StandardAutoencoder
-from variational_rate_of_aging_autoencoder import VariationalRateOfAgingAutoencoder
+from variational_rate_of_aging_monotonic_autoencoder import VariationalRateOfAgingMonotonicAutoencoder
 
-class VariationalLongitudinalRateOfAgingAutoencoder(VariationalRateOfAgingAutoencoder):
+class VariationalLongitudinalMonotonicRateOfAgingAutoencoder(VariationalRateOfAgingMonotonicAutoencoder):
     """
     Implements a variational rate-of-aging autoencoder with longitudinal data. 
     Does this by defining a combined_cross_sectional_plus_lon_loss and minimizing that instead. 
@@ -21,7 +21,7 @@ class VariationalLongitudinalRateOfAgingAutoencoder(VariationalRateOfAgingAutoen
                  lon_loss_weighting_factor=1,
                  lon_batch_size=128,
                  **kwargs):
-        super(VariationalLongitudinalRateOfAgingAutoencoder, self).__init__(uses_longitudinal_data=True, 
+        super(VariationalLongitudinalMonotonicRateOfAgingAutoencoder, self).__init__(uses_longitudinal_data=True, 
                                                                             **kwargs)  
         
         self.lon_loss_weighting_factor = lon_loss_weighting_factor
@@ -33,7 +33,7 @@ class VariationalLongitudinalRateOfAgingAutoencoder(VariationalRateOfAgingAutoen
         self.lon_X0 = tf.placeholder("float32", None, name='lon_X0')
         self.lon_ages1 = tf.placeholder("float32", None, name='lon_ages1')
         self.lon_X1 = tf.placeholder("float32", None, name='lon_X1')
-        super(VariationalLongitudinalRateOfAgingAutoencoder, self).init_network()
+        super(VariationalLongitudinalMonotonicRateOfAgingAutoencoder, self).init_network()
     
     def set_up_encoder_structure(self):
         # set up both longitudinal encoder and cross-sectional encoder. 
