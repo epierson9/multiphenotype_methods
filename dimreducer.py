@@ -87,10 +87,11 @@ class LinearDimReducer(DimReducer):
         X = X - compute_column_means_with_incomplete_data(X)
         return X
 
-    def _get_projections_from_processed_data(self, X):
+    def _get_projections_from_processed_data(self, X, project_onto_mean=None):
         """
         U is a d x k matrix where k is the number of eigenvectors
         Returns n x k matrix of projections
+        project_onto_mean is a dummy variable that's needed for compatability with stochastic models
         """
         assert(X.shape[1] == self.U.shape[0])
         assert(self.U.shape[1] == self.k)
