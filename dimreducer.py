@@ -175,11 +175,11 @@ class CPCA(LinearDimReducer):
     """
     Requires dataframes passed in to have a column foreground and a column background. 
     """
-    def __init__(self, k, alpha):        
+    def __init__(self, k, alpha, make_diagnostic_plots=True):        
         self.k = k
         self.alpha = alpha
         self.need_ages = False
-
+        self.make_diagnostic_plots = make_diagnostic_plots
     def _fit_from_processed_data(self, X, foreground, background, take_abs):
         # Must pass in matrix X with a boolean column foreground and a boolean column background. 
         # Require both columns in case they are not mutually exhaustive (ie, there are some rows we don't want to use at all). 
@@ -210,7 +210,8 @@ class CPCA(LinearDimReducer):
         
         assert fg_mat.shape[1] == bg_mat.shape[1]  
         diff_cov = fg_cov - self.alpha * bg_cov
-        cluster_and_plot_correlation_matrix(diff_cov, column_names = self.feature_names, how_to_sort = 'hierarchical')
+        if self.make_diagnostic_plots:
+            cluster_and_plot_correlation_matrix(diff_cov, column_names = self.feature_names, how_to_sort = 'hierarchical')
         
         s, U = np.linalg.eig(diff_cov) # Returns eigenvalues s and eigenvectors U
         
@@ -222,13 +223,14 @@ class CPCA(LinearDimReducer):
         U = U[:, idx]        
         U = U[:, :self.k]
 
-        print('Distribution of eigenvalues:')    
-        sns.distplot(s)
-        plt.show()
-        print('Taking eigenvalues: %s' % s[:self.k])
-        print('Total sum of eigenvalues          : %.3f' % np.sum(s))
-        print('Total sum of eigenvalues taken    : %.3f' % np.sum(s[:self.k]))
-        print('Total sum of eigenvalues not taken: %.3f' % np.sum(s[self.k:]))
+        if self.make_diagnostic_plots:
+            print('Distribution of eigenvalues:')    
+            sns.distplot(s)
+            plt.show()
+            print('Taking eigenvalues: %s' % s[:self.k])
+            print('Total sum of eigenvalues          : %.3f' % np.sum(s))
+            print('Total sum of eigenvalues taken    : %.3f' % np.sum(s[:self.k]))
+            print('Total sum of eigenvalues not taken: %.3f' % np.sum(s[self.k:]))
 
         self.U = U
         self.s = s
